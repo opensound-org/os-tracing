@@ -24,6 +24,9 @@ rust-version = "1.80.0"
 all-features = true
 
 [dependencies]
+est = "0.4.1"
+surrealdb = { version = "2.1.0", features = ["kv-rocksdb"] }
+tokio = { version = "1.4.11", features = ["full"] }
 
 [dev-dependencies]
 
