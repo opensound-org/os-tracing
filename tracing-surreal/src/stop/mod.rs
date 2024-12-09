@@ -11,11 +11,16 @@ pub struct Stop<C: Connection> {
     formatted_timestamp: String,
 }
 
+#[derive(Deserialize)]
+struct RID {
+    id: RecordId,
+}
+
 impl<C: Connection> Stop<C> {
     pub async fn init(db: Surreal<C>, app: &str) -> surrealdb::Result<Self> {
         db.use_db(format!("app-tracing-{}", app)).await?;
 
-        #[derive(Debug, Deserialize, Serialize)]
+        #[derive(Serialize)]
         struct SessionRecord {
             a_timestamp: DateTime<Local>,
             b_access_method: Option<String>,
@@ -24,11 +29,6 @@ impl<C: Connection> Stop<C> {
             e_session_ip: Option<String>,
             f_session_id: Option<String>,
             g_session_token: Option<Value>,
-        }
-
-        #[derive(Debug, Deserialize, Serialize)]
-        struct SessionId {
-            id: RecordId,
         }
 
         let a_timestamp = Local::now();
@@ -47,14 +47,14 @@ impl<C: Connection> Stop<C> {
             f_session_id,
             g_session_token,
         };
-        let id: Option<SessionId> = db
+        let rid: Option<RID> = db
             .create((
                 "sessions",
                 Ulid::from_datetime(a_timestamp.into()).to_string(),
             ))
             .content(record)
             .await?;
-        let session_id = id.unwrap().id;
+        let session_id = rid.unwrap().id;
         let formatted_timestamp = a_timestamp.format("%y%m%d-%H%M%S").to_string();
 
         Ok(Self {
