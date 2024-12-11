@@ -49,6 +49,12 @@ pub enum ServerError {
     Io(#[from] io::Error),
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum GracefulType {
+    CtrlC,
+    Explicit,
+}
+
 impl<C: Connection + Clone> ServerBuilder<C> {
     pub fn from_stop_default(stop: &Stop<C>) -> Self {
         Self {
@@ -238,12 +244,6 @@ pub struct ServerHandle {
     local_addr: SocketAddr,
     shutdown_s: oneshot::Sender<()>,
     routine: JoinHandle<RoutineOutput>,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum GracefulType {
-    CtrlC,
-    Explicit,
 }
 
 impl ServerHandle {
