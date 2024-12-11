@@ -4,7 +4,7 @@ use surrealdb::{
     opt::auth::Root,
     Surreal,
 };
-use tracing_surreal::stop::Stop;
+use tracing_surreal::{stop::Stop, tmp::server::ServerBuilder};
 
 async fn db() -> AnyRes<Surreal<Client>> {
     let db = Surreal::new::<Ws>("localhost:8000").await?;
@@ -20,6 +20,9 @@ async fn db() -> AnyRes<Surreal<Client>> {
 
 #[tokio::main]
 async fn main() -> AnyRes {
-    Stop::init(db().await?, "test").await?.print().await;
+    let stop = Stop::init(db().await?, "test").await?;
+    let server = ServerBuilder::from_stop_default(&stop).start().await?;
+    println!("{}", server.get_local_addr());
+    server.join().await??;
     Ok(())
 }
