@@ -5,7 +5,7 @@ use surrealdb::{
     opt::auth::Root,
     Surreal,
 };
-use tokio::time::sleep;
+use tokio::time::timeout;
 use tracing_surreal::{stop::Stop, tmp::server::ServerBuilder};
 
 async fn db() -> AnyRes<Surreal<Client>> {
@@ -26,12 +26,12 @@ async fn main() -> AnyRes {
     let mut server = ServerBuilder::from_stop_default(&stop).start().await?;
     println!("{}", server.get_local_addr());
 
-    let grace_type = tokio::select! {
-        _ = sleep(Duration::from_secs_f64(5.0)) => {
+    let grace_type = match timeout(Duration::from_secs_f64(5.0), &mut server).await {
+        Err(_) => {
             println!("5s elapsed, initiating shutdown...");
             server.graceful_shutdown().await??
         }
-        res = server.get_routine_mut() => {
+        Ok(res) => {
             println!("routine exited");
             res??
         }

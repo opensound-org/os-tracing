@@ -1,8 +1,10 @@
 use crate::stop::Stop;
 use std::{
-    future::IntoFuture,
+    future::Future,
     io,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    pin::Pin,
+    task::{Context, Poll},
     time::Duration,
 };
 use surrealdb::Connection;
@@ -228,11 +230,14 @@ impl<C: Connection + Clone> ServerBuilder<C> {
     }
 }
 
+type RoutineOutput = io::Result<GracefulType>;
+type ServerOutput = Result<RoutineOutput, JoinError>;
+
 #[derive(Debug)]
 pub struct ServerHandle {
     local_addr: SocketAddr,
     shutdown_s: oneshot::Sender<()>,
-    routine: JoinHandle<io::Result<GracefulType>>,
+    routine: JoinHandle<RoutineOutput>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -246,21 +251,16 @@ impl ServerHandle {
         self.local_addr
     }
 
-    pub fn get_routine_mut(&mut self) -> &mut JoinHandle<io::Result<GracefulType>> {
-        &mut self.routine
-    }
-
-    pub async fn graceful_shutdown(self) -> Result<io::Result<GracefulType>, JoinError> {
+    pub async fn graceful_shutdown(self) -> ServerOutput {
         self.shutdown_s.send(()).ok();
         self.routine.await
     }
 }
 
-impl IntoFuture for ServerHandle {
-    type Output = Result<io::Result<GracefulType>, JoinError>;
-    type IntoFuture = JoinHandle<io::Result<GracefulType>>;
+impl Future for ServerHandle {
+    type Output = ServerOutput;
 
-    fn into_future(self) -> Self::IntoFuture {
-        self.routine
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.routine).poll(cx)
     }
 }
