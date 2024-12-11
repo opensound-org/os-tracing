@@ -1,5 +1,6 @@
 use crate::stop::Stop;
 use std::{
+    future::IntoFuture,
     io,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     time::Duration,
@@ -8,6 +9,8 @@ use surrealdb::Connection;
 use thiserror::Error;
 use tokio::{
     net::{lookup_host, TcpListener, ToSocketAddrs},
+    signal::ctrl_c,
+    sync::oneshot,
     task::{JoinError, JoinHandle},
 };
 
@@ -31,6 +34,7 @@ pub struct ServerBuilder<C: Connection> {
     recv_bincode: Option<bool>,
     fuck_off_on_damage: bool,
     send_format: SendFormat,
+    ctrlc_shutdown: bool,
     handshake_timeout: Duration,
     bind_addrs: Vec<SocketAddr>,
 }
@@ -57,6 +61,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
             recv_bincode: Some(true),
             fuck_off_on_damage: false,
             send_format: SendFormat::Bincode,
+            ctrlc_shutdown: true,
             handshake_timeout: Duration::from_secs_f64(3.0),
             bind_addrs: vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8192).into()],
         }
@@ -156,6 +161,13 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         }
     }
 
+    pub fn disable_ctrlc_shutdown(self) -> Self {
+        Self {
+            ctrlc_shutdown: false,
+            ..self
+        }
+    }
+
     pub fn handshake_timeout(self, timeout: Duration) -> Self {
         Self {
             handshake_timeout: timeout,
@@ -178,6 +190,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         let listener = TcpListener::bind(self.bind_addrs.as_slice()).await?;
         let builder = self;
         let local_addr = listener.local_addr().unwrap();
+        let (shutdown_s, mut shutdown_r) = oneshot::channel();
         let routine = tokio::spawn(async move {
             builder.stop.print().await;
             println!("{}", builder.pusher_path);
@@ -188,7 +201,20 @@ impl<C: Connection + Clone> ServerBuilder<C> {
             println!("{:?}", builder.handshake_timeout);
 
             loop {
-                let (stream, client) = listener.accept().await?;
+                let (stream, client) = tokio::select! {
+                    res = ctrl_c(), if builder.ctrlc_shutdown => {
+                        println!("Bye from ctrl_c");
+                        return res.map(|_| GracefulType::CtrlC);
+                    }
+                    _ = &mut shutdown_r => {
+                        println!("Bye from shutdown_r");
+                        return Ok(GracefulType::Explicit);
+                    }
+                    res = listener.accept() => {
+                        res?
+                    }
+                };
+
                 println!("{:?}", stream);
                 println!("{}", client);
             }
@@ -196,6 +222,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
 
         Ok(ServerHandle {
             local_addr,
+            shutdown_s,
             routine,
         })
     }
@@ -204,7 +231,14 @@ impl<C: Connection + Clone> ServerBuilder<C> {
 #[derive(Debug)]
 pub struct ServerHandle {
     local_addr: SocketAddr,
-    routine: JoinHandle<io::Result<()>>,
+    shutdown_s: oneshot::Sender<()>,
+    routine: JoinHandle<io::Result<GracefulType>>,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum GracefulType {
+    CtrlC,
+    Explicit,
 }
 
 impl ServerHandle {
@@ -212,7 +246,21 @@ impl ServerHandle {
         self.local_addr
     }
 
-    pub async fn join(self) -> Result<io::Result<()>, JoinError> {
+    pub fn get_routine_mut(&mut self) -> &mut JoinHandle<io::Result<GracefulType>> {
+        &mut self.routine
+    }
+
+    pub async fn graceful_shutdown(self) -> Result<io::Result<GracefulType>, JoinError> {
+        self.shutdown_s.send(()).ok();
         self.routine.await
+    }
+}
+
+impl IntoFuture for ServerHandle {
+    type Output = Result<io::Result<GracefulType>, JoinError>;
+    type IntoFuture = JoinHandle<io::Result<GracefulType>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        self.routine
     }
 }
