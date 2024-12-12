@@ -12,9 +12,9 @@ use thiserror::Error;
 use tokio::{
     net::{lookup_host, TcpListener, ToSocketAddrs},
     signal::ctrl_c,
-    sync::oneshot,
     task::{JoinError, JoinHandle},
 };
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Copy, Clone)]
 enum SendFormat {
@@ -198,7 +198,8 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         let listener = TcpListener::bind(self.bind_addrs.as_slice()).await?;
         let builder = self;
         let local_addr = listener.local_addr().unwrap();
-        let (shutdown_s, mut shutdown_r) = oneshot::channel();
+        let shutdown_trigger = CancellationToken::new();
+        let shutdown_waiter = shutdown_trigger.clone();
         let routine = tokio::spawn(async move {
             builder.stop.print().await;
             println!("{}", builder.pusher_path);
@@ -214,8 +215,8 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                         println!("Bye from ctrl_c");
                         return res.map(|_| GracefulType::CtrlC);
                     }
-                    _ = &mut shutdown_r => {
-                        println!("Bye from shutdown_r");
+                    _ = shutdown_waiter.cancelled() => {
+                        println!("Bye from shutdown_waiter");
                         return Ok(GracefulType::Explicit);
                     }
                     res = listener.accept() => {
@@ -230,7 +231,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
 
         Ok(ServerHandle {
             local_addr,
-            shutdown_s,
+            shutdown_trigger,
             routine,
         })
     }
@@ -242,7 +243,7 @@ type ServerOutput = Result<RoutineOutput, JoinError>;
 #[derive(Debug)]
 pub struct ServerHandle {
     local_addr: SocketAddr,
-    shutdown_s: oneshot::Sender<()>,
+    shutdown_trigger: CancellationToken,
     routine: JoinHandle<RoutineOutput>,
 }
 
@@ -251,9 +252,13 @@ impl ServerHandle {
         self.local_addr
     }
 
+    pub fn trigger_graceful_shutdown(&self) {
+        self.shutdown_trigger.cancel();
+    }
+
     pub async fn graceful_shutdown(self) -> ServerOutput {
-        self.shutdown_s.send(()).ok();
-        self.routine.await
+        self.trigger_graceful_shutdown();
+        self.await
     }
 }
 
