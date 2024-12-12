@@ -3642,6 +3642,8 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
+ "hashbrown 0.14.5",
  "pin-project-lite",
  "tokio",
 ]
@@ -3715,6 +3717,7 @@ dependencies = [
  "thiserror 2.0.6",
  "tokio",
  "tokio-tungstenite 0.24.0",
+ "tokio-util",
  "ulid",
  "version_check",
 ]

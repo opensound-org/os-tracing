@@ -35,6 +35,7 @@ surrealdb = "2.1.3"
 thiserror = "2.0.6"
 tokio = { version = "1.42.0", features = ["full"] }
 tokio-tungstenite = "0.24.0"
+tokio-util = { version = "0.7.13", features = ["rt"] }
 ulid = "1.1.3"
 
 [dev-dependencies]
