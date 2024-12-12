@@ -37,7 +37,8 @@ pub struct ServerBuilder<C: Connection> {
     fuck_off_on_damage: bool,
     send_format: SendFormat,
     ctrlc_shutdown: bool,
-    handshake_timeout: Duration,
+    ws_handshake_timeout: Duration,
+    tmp_handshake_timeout: Duration,
     bind_addrs: Vec<SocketAddr>,
 }
 
@@ -70,7 +71,8 @@ impl<C: Connection + Clone> ServerBuilder<C> {
             fuck_off_on_damage: false,
             send_format: SendFormat::Bincode,
             ctrlc_shutdown: true,
-            handshake_timeout: Duration::from_secs_f64(3.0),
+            ws_handshake_timeout: Duration::from_secs_f64(1.5),
+            tmp_handshake_timeout: Duration::from_secs_f64(3.0),
             bind_addrs: vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8192).into()],
         }
     }
@@ -176,9 +178,16 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         }
     }
 
-    pub fn handshake_timeout(self, timeout: Duration) -> Self {
+    pub fn ws_handshake_timeout(self, timeout: Duration) -> Self {
         Self {
-            handshake_timeout: timeout,
+            ws_handshake_timeout: timeout,
+            ..self
+        }
+    }
+
+    pub fn tmp_handshake_timeout(self, timeout: Duration) -> Self {
+        Self {
+            tmp_handshake_timeout: timeout,
             ..self
         }
     }
@@ -207,7 +216,8 @@ impl<C: Connection + Clone> ServerBuilder<C> {
             println!("{}", builder.director_path);
             println!("{}", builder.fuck_off_on_damage);
             println!("{:?}", builder.send_format);
-            println!("{:?}", builder.handshake_timeout);
+            println!("{:?}", builder.ws_handshake_timeout);
+            println!("{:?}", builder.tmp_handshake_timeout);
 
             loop {
                 let (stream, client) = tokio::select! {
