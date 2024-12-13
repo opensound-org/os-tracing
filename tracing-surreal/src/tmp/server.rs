@@ -1,4 +1,5 @@
 use crate::stop::Stop;
+use est::task::CloseAndWait;
 use std::{
     future::Future,
     io,
@@ -13,8 +14,10 @@ use tokio::{
     net::{lookup_host, TcpListener, ToSocketAddrs},
     signal::ctrl_c,
     task::{JoinError, JoinHandle},
+    time::timeout,
 };
-use tokio_util::sync::CancellationToken;
+use tokio_tungstenite::accept_async;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Debug, Copy, Clone)]
 enum SendFormat {
@@ -216,17 +219,21 @@ impl<C: Connection + Clone> ServerBuilder<C> {
             println!("{}", builder.director_path);
             println!("{}", builder.fuck_off_on_damage);
             println!("{:?}", builder.send_format);
-            println!("{:?}", builder.ws_handshake_timeout);
             println!("{:?}", builder.tmp_handshake_timeout);
+
+            let tracker = TaskTracker::new();
 
             loop {
                 let (stream, client) = tokio::select! {
                     res = ctrl_c(), if builder.ctrlc_shutdown => {
                         println!("Bye from ctrl_c");
+                        shutdown_waiter.cancel();
+                        tracker.close_and_wait().await;
                         return res.map(|_| GracefulType::CtrlC);
                     }
                     _ = shutdown_waiter.cancelled() => {
                         println!("Bye from shutdown_waiter");
+                        tracker.close_and_wait().await;
                         return Ok(GracefulType::Explicit);
                     }
                     res = listener.accept() => {
@@ -236,6 +243,15 @@ impl<C: Connection + Clone> ServerBuilder<C> {
 
                 println!("{:?}", stream);
                 println!("{}", client);
+
+                let builder = builder.clone();
+                tracker.spawn(async move {
+                    match timeout(builder.ws_handshake_timeout, accept_async(stream)).await {
+                        Ok(Ok(stream)) => println!("inner_stream: {:?}", stream),
+                        Ok(Err(err)) => println!("inner_err: {}", err),
+                        Err(err) => println!("outer_err: {}", err),
+                    }
+                });
             }
         });
 
