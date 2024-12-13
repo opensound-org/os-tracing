@@ -16,7 +16,7 @@ use tokio::{
     task::{JoinError, JoinHandle},
     time::timeout,
 };
-use tokio_tungstenite::accept_async;
+use tokio_tungstenite::{accept_hdr_async, tungstenite::handshake::server::Request};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Debug, Copy, Clone)]
@@ -256,7 +256,12 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                             println!("shutdown_waiter.cancelled()");
                             return;
                         }
-                        res = timeout(builder.ws_handshake_timeout, accept_async(stream)) => match res {
+                        res = timeout(
+                            builder.ws_handshake_timeout,
+                            accept_hdr_async(stream, move |_req: &Request, res| {
+                                Ok(res)
+                            }),
+                        ) => match res {
                             Err(err) => {
                                 println!("outer_err: {}", err);
                                 return;
