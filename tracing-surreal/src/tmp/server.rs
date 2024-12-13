@@ -20,7 +20,10 @@ use tokio::{
 };
 use tokio_tungstenite::{
     accept_hdr_async,
-    tungstenite::handshake::server::{ErrorResponse, Request, Response},
+    tungstenite::{
+        handshake::server::{ErrorResponse, Request, Response},
+        http::StatusCode,
+    },
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -313,9 +316,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                     return token_auth(query, auth_args.director_token, send, Role::Director, resp);
                                 }
 
-                                let text = "invalid path!";
-                                println!("{}", text);
-                                Err(err_resp(text))
+                                Err(err_resp("invalid path!", StatusCode::NOT_FOUND))
                             }),
                         ) => match res {
                             Err(err) => {
@@ -361,31 +362,26 @@ fn token_auth(
     if let Some(token_need) = token_need {
         match query {
             None => {
-                let text = "need query!";
-                println!("{}", text);
-                return Err(err_resp(text));
+                return Err(err_resp("need query!", StatusCode::BAD_REQUEST));
             }
             Some(Err(err)) => {
-                let text = format!("query err: {}", err);
-                println!("{}", text);
-                return Err(err_resp(&text));
+                return Err(err_resp(
+                    &format!("query err: {}", err),
+                    StatusCode::BAD_REQUEST,
+                ));
             }
             Some(Ok(map)) => {
                 println!("{:?}", map);
 
                 match map.get("token") {
                     None => {
-                        let text = "need token!";
-                        println!("{}", text);
-                        return Err(err_resp(text));
+                        return Err(err_resp("need token!", StatusCode::BAD_REQUEST));
                     }
                     Some(token_req) => {
                         println!("token_req: {}", token_req);
 
                         if *token_req != token_need {
-                            let text = "wrong token!";
-                            println!("{}", text);
-                            return Err(err_resp(text));
+                            return Err(err_resp("wrong token!", StatusCode::FORBIDDEN));
                         }
                     }
                 }
@@ -397,8 +393,13 @@ fn token_auth(
     return Ok(resp);
 }
 
-fn err_resp(text: &str) -> ErrorResponse {
-    ErrorResponse::new(Some(text.into()))
+fn err_resp(text: &str, status: StatusCode) -> ErrorResponse {
+    println!("{}", text);
+    println!("{}", status);
+
+    let mut resp = ErrorResponse::new(Some(text.into()));
+    *resp.status_mut() = status;
+    resp
 }
 
 type RoutineOutput = io::Result<GracefulType>;
