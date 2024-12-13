@@ -73,28 +73,6 @@ pub enum GracefulType {
 }
 
 impl<C: Connection + Clone> ServerBuilder<C> {
-    pub fn from_stop_default(stop: &Stop<C>) -> Self {
-        Self {
-            stop: stop.clone(),
-            auth_args: AuthArgs {
-                pusher_path: "/pusher".into(),
-                pusher_token: None,
-                observer_path: "/observer".into(),
-                observer_token: None,
-                director_path: "/director".into(),
-                director_token: None,
-            },
-            recv_json: true,
-            recv_bincode: Some(true),
-            fuck_off_on_damage: false,
-            send_format: SendFormat::Bincode,
-            ctrlc_shutdown: true,
-            ws_handshake_timeout: Duration::from_secs_f64(1.5),
-            tmp_handshake_timeout: Duration::from_secs_f64(3.0),
-            bind_addrs: vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8192).into()],
-        }
-    }
-
     pub fn pusher_path(self, path: &str) -> Self {
         Self {
             auth_args: AuthArgs {
@@ -342,6 +320,34 @@ impl<C: Connection + Clone> ServerBuilder<C> {
             shutdown_trigger,
             routine,
         })
+    }
+}
+
+pub trait BuildServerDefault<C: Connection> {
+    fn build_server_default(&self) -> ServerBuilder<C>;
+}
+
+impl<C: Connection + Clone> BuildServerDefault<C> for Stop<C> {
+    fn build_server_default(&self) -> ServerBuilder<C> {
+        ServerBuilder {
+            stop: self.clone(),
+            auth_args: AuthArgs {
+                pusher_path: "/pusher".into(),
+                pusher_token: None,
+                observer_path: "/observer".into(),
+                observer_token: None,
+                director_path: "/director".into(),
+                director_token: None,
+            },
+            recv_json: true,
+            recv_bincode: Some(true),
+            fuck_off_on_damage: false,
+            send_format: SendFormat::Bincode,
+            ctrlc_shutdown: true,
+            ws_handshake_timeout: Duration::from_secs_f64(1.5),
+            tmp_handshake_timeout: Duration::from_secs_f64(3.0),
+            bind_addrs: vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8192).into()],
+        }
     }
 }
 

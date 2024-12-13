@@ -6,7 +6,7 @@ use surrealdb::{
     Surreal,
 };
 use tokio::time::timeout;
-use tracing_surreal::{stop::Stop, tmp::server::ServerBuilder};
+use tracing_surreal::{stop::Stop, tmp::server::BuildServerDefault};
 
 async fn db() -> AnyRes<Surreal<Client>> {
     let db = Surreal::new::<Ws>("localhost:8000").await?;
@@ -23,7 +23,7 @@ async fn db() -> AnyRes<Surreal<Client>> {
 #[tokio::main]
 async fn main() -> AnyRes {
     let stop = Stop::init(db().await?, "test").await?;
-    let mut server = ServerBuilder::from_stop_default(&stop).start().await?;
+    let mut server = stop.build_server_default().start().await?;
     println!("{}", server.get_local_addr());
 
     let grace_type = match timeout(Duration::from_secs_f64(5.0), &mut server).await {
