@@ -237,6 +237,10 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                         return Ok(GracefulType::Explicit);
                     }
                     res = listener.accept() => {
+                        if let Err(err) = &res {
+                            println!("accept err: {}", err);
+                        }
+
                         res?
                     }
                 };
