@@ -245,12 +245,27 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                 println!("{}", client);
 
                 let builder = builder.clone();
+                let shutdown_waiter = shutdown_waiter.clone();
                 tracker.spawn(async move {
-                    match timeout(builder.ws_handshake_timeout, accept_async(stream)).await {
-                        Ok(Ok(stream)) => println!("inner_stream: {:?}", stream),
-                        Ok(Err(err)) => println!("inner_err: {}", err),
-                        Err(err) => println!("outer_err: {}", err),
-                    }
+                    let stream = tokio::select! {
+                        _ = shutdown_waiter.cancelled() => {
+                            println!("shutdown_waiter.cancelled()");
+                            return;
+                        }
+                        res = timeout(builder.ws_handshake_timeout, accept_async(stream)) => match res {
+                            Err(err) => {
+                                println!("outer_err: {}", err);
+                                return;
+                            }
+                            Ok(Err(err)) => {
+                                println!("inner_err: {}", err);
+                                return;
+                            }
+                            Ok(Ok(stream)) => stream,
+                        }
+                    };
+
+                    println!("inner_stream: {:?}", stream);
                 });
             }
         });
