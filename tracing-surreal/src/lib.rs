@@ -2,6 +2,7 @@
 
 pub mod stop;
 pub mod tmp;
+pub mod tracing_msg;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right

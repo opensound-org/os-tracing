@@ -1,4 +1,4 @@
-use crate::stop::Stop;
+use crate::{stop::Stop, tracing_msg::Role};
 use est::task::CloseAndWait;
 use std::{
     collections::HashMap,
@@ -37,21 +37,14 @@ struct AuthArgs {
     director_token: Option<String>,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum SendFormat {
-    Json,
-    Bincode,
-    Msgpack,
-}
-
 #[derive(Clone, Debug)]
 pub struct ServerBuilder<C: Connection> {
     stop: Stop<C>,
     auth_args: AuthArgs,
-    recv_json: bool,
-    recv_bincode: Option<bool>,
+    accept_json: bool,
+    accept_bincode: bool,
+    accept_msgpack: bool,
     fuck_off_on_damage: bool,
-    send_format: SendFormat,
     ctrlc_shutdown: bool,
     ws_handshake_timeout: Duration,
     tmp_handshake_timeout: Duration,
@@ -60,8 +53,8 @@ pub struct ServerBuilder<C: Connection> {
 
 #[derive(Error, Debug)]
 pub enum ServerError {
-    #[error("no receivable format available")]
-    NoRecvFormat,
+    #[error("no message format available")]
+    NoMsgFormat,
     #[error("io error: `{0}`")]
     Io(#[from] io::Error),
 }
@@ -146,23 +139,23 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         }
     }
 
-    pub fn disable_recv_json(self) -> Self {
+    pub fn disable_json(self) -> Self {
         Self {
-            recv_json: false,
+            accept_json: false,
             ..self
         }
     }
 
-    pub fn disable_recv_binary(self) -> Self {
+    pub fn disable_bincode(self) -> Self {
         Self {
-            recv_bincode: None,
+            accept_bincode: false,
             ..self
         }
     }
 
-    pub fn binary_recv_msgpack(self) -> Self {
+    pub fn disable_msgpack(self) -> Self {
         Self {
-            recv_bincode: Some(false),
+            accept_msgpack: false,
             ..self
         }
     }
@@ -170,20 +163,6 @@ impl<C: Connection + Clone> ServerBuilder<C> {
     pub fn fuck_off_on_damage(self) -> Self {
         Self {
             fuck_off_on_damage: true,
-            ..self
-        }
-    }
-
-    pub fn send_json(self) -> Self {
-        Self {
-            send_format: SendFormat::Json,
-            ..self
-        }
-    }
-
-    pub fn send_msgpack(self) -> Self {
-        Self {
-            send_format: SendFormat::Msgpack,
             ..self
         }
     }
@@ -217,8 +196,8 @@ impl<C: Connection + Clone> ServerBuilder<C> {
     }
 
     pub async fn start(self) -> Result<ServerHandle, ServerError> {
-        if !self.recv_json && self.recv_bincode.is_none() {
-            return Err(ServerError::NoRecvFormat);
+        if !self.accept_json && !self.accept_bincode && !self.accept_msgpack {
+            return Err(ServerError::NoMsgFormat);
         }
 
         let listener = TcpListener::bind(self.bind_addrs.as_slice()).await?;
@@ -229,7 +208,6 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         let routine = tokio::spawn(async move {
             builder.stop.print().await;
             println!("{}", builder.fuck_off_on_damage);
-            println!("{:?}", builder.send_format);
             println!("{:?}", builder.tmp_handshake_timeout);
             // log safe builder info into db
 
@@ -339,23 +317,16 @@ impl<C: Connection + Clone> BuildServerDefault<C> for Stop<C> {
                 director_path: "/director".into(),
                 director_token: None,
             },
-            recv_json: true,
-            recv_bincode: Some(true),
+            accept_json: true,
+            accept_bincode: true,
+            accept_msgpack: true,
             fuck_off_on_damage: false,
-            send_format: SendFormat::Bincode,
             ctrlc_shutdown: true,
             ws_handshake_timeout: Duration::from_secs_f64(1.5),
             tmp_handshake_timeout: Duration::from_secs_f64(3.0),
             bind_addrs: vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8192).into()],
         }
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Role {
-    Pusher,
-    Observer,
-    Director,
 }
 
 fn token_auth(
