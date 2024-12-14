@@ -266,15 +266,33 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                 }
 
                                 if path == auth_args.pusher_path {
-                                    return token_auth(query, auth_args.pusher_token, role_send, Role::Pusher, resp);
+                                    return token_auth(
+                                        query,
+                                        auth_args.pusher_token,
+                                        role_send,
+                                        Role::Pusher,
+                                        resp
+                                    );
                                 }
 
                                 if path == auth_args.observer_path {
-                                    return token_auth(query, auth_args.observer_token, role_send, Role::Observer, resp);
+                                    return token_auth(
+                                        query,
+                                        auth_args.observer_token,
+                                        role_send,
+                                        Role::Observer,
+                                        resp
+                                    );
                                 }
 
                                 if path == auth_args.director_path {
-                                    return token_auth(query, auth_args.director_token, role_send, Role::Director, resp);
+                                    return token_auth(
+                                        query,
+                                        auth_args.director_token,
+                                        role_send,
+                                        Role::Director,
+                                        resp
+                                    );
                                 }
 
                                 Err(err_resp("invalid path!", StatusCode::NOT_FOUND))
@@ -288,7 +306,9 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                 println!("inner_err: {}", err);
                                 return;
                             }
-                            Ok(Ok(stream)) => (stream, role_recv.await.unwrap(), map_recv.await.ok()),
+                            Ok(Ok(stream)) => {
+                                (stream, role_recv.await.unwrap(), map_recv.await.ok())
+                            }
                         }
                     };
 
