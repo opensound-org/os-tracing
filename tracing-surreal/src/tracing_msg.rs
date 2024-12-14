@@ -20,6 +20,6 @@ pub enum MsgFormat {
 pub struct ClientHandshake {
     msg_format: MsgFormat,
     client_name: String,
-    proc_id: u32,
     proc_name: String,
+    proc_id: u32,
 }
