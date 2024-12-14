@@ -241,9 +241,10 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                 let builder = builder.clone();
                 let auth_args = builder.auth_args.clone();
                 let shutdown_waiter = shutdown_waiter.clone();
-                let (send, recv) = oneshot::channel();
+                let (role_send, role_recv) = oneshot::channel();
+                let (map_send, map_recv) = oneshot::channel();
                 tracker.spawn(async move {
-                    let (stream, role) = tokio::select! {
+                    let (stream, role, query_map) = tokio::select! {
                         _ = shutdown_waiter.cancelled() => {
                             println!("shutdown_waiter.cancelled()");
                             return;
@@ -260,16 +261,20 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                 println!("path: {}", path);
                                 println!("query: {:?}", query);
 
+                                if let Some(Ok(map)) = &query {
+                                    map_send.send(map.clone()).ok();
+                                }
+
                                 if path == auth_args.pusher_path {
-                                    return token_auth(query, auth_args.pusher_token, send, Role::Pusher, resp);
+                                    return token_auth(query, auth_args.pusher_token, role_send, Role::Pusher, resp);
                                 }
 
                                 if path == auth_args.observer_path {
-                                    return token_auth(query, auth_args.observer_token, send, Role::Observer, resp);
+                                    return token_auth(query, auth_args.observer_token, role_send, Role::Observer, resp);
                                 }
 
                                 if path == auth_args.director_path {
-                                    return token_auth(query, auth_args.director_token, send, Role::Director, resp);
+                                    return token_auth(query, auth_args.director_token, role_send, Role::Director, resp);
                                 }
 
                                 Err(err_resp("invalid path!", StatusCode::NOT_FOUND))
@@ -283,12 +288,13 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                 println!("inner_err: {}", err);
                                 return;
                             }
-                            Ok(Ok(stream)) => (stream, recv.await.unwrap()),
+                            Ok(Ok(stream)) => (stream, role_recv.await.unwrap(), map_recv.await.ok()),
                         }
                     };
 
                     println!("inner_stream: {:?}", stream);
                     println!("inner_role: {:?}", role);
+                    println!("query_map: {:?}", query_map);
                 });
             }
         });
@@ -332,7 +338,7 @@ impl<C: Connection + Clone> BuildServerDefault<C> for Stop<C> {
 fn token_auth(
     query: Option<Result<HashMap<String, String>, serde_qs::Error>>,
     token_need: Option<String>,
-    send: oneshot::Sender<Role>,
+    role_send: oneshot::Sender<Role>,
     role: Role,
     resp: Response,
 ) -> Result<Response, ErrorResponse> {
@@ -367,7 +373,7 @@ fn token_auth(
         }
     }
 
-    send.send(role).ok();
+    role_send.send(role).ok();
     return Ok(resp);
 }
 
