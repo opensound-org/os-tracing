@@ -209,7 +209,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
             builder.stop.print().await;
             println!("{}", builder.fuck_off_on_damage);
             println!("{:?}", builder.tmp_handshake_timeout);
-            // log safe builder info into db
+            // log safe builder info + local_addr into db
 
             let tracker = TaskTracker::new();
 
