@@ -15,3 +15,11 @@ pub enum MsgFormat {
     Bincode,
     Msgpack,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+pub struct ClientHandshake {
+    msg_format: MsgFormat,
+    client_name: String,
+    proc_id: u32,
+    proc_name: String,
+}
