@@ -371,6 +371,7 @@ fn token_auth(
                 return Err(err_resp("need query!", StatusCode::BAD_REQUEST));
             }
             Some(Err(err)) => {
+                // e.g.: "ws://127.0.0.1:8192/pusher?=&=&=&"
                 return Err(err_resp(
                     &format!("query err: {}", err),
                     StatusCode::BAD_REQUEST,
