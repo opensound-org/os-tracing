@@ -23,3 +23,13 @@ pub struct ClientHandshake {
     pub proc_id: u32,
     pub msg_format: MsgFormat,
 }
+
+// Need to gate this under `experimental` feature flag.
+#[doc(hidden)]
+pub fn current_exe_name() -> std::io::Result<String> {
+    Ok(std::env::current_exe()?
+        .file_name()
+        .expect("this should not happen here")
+        .to_string_lossy()
+        .into())
+}
