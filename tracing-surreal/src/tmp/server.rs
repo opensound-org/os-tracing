@@ -45,6 +45,7 @@ pub struct ServerBuilder<C: Connection> {
     accept_bincode: bool,
     accept_msgpack: bool,
     fuck_off_on_damage: bool,
+    fuck_off_on_observer_push: bool,
     ctrlc_shutdown: bool,
     ws_handshake_timeout: Duration,
     tmp_handshake_timeout: Duration,
@@ -167,6 +168,13 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         }
     }
 
+    pub fn fuck_off_on_observer_push(self) -> Self {
+        Self {
+            fuck_off_on_observer_push: true,
+            ..self
+        }
+    }
+
     pub fn disable_ctrlc_shutdown(self) -> Self {
         Self {
             ctrlc_shutdown: false,
@@ -208,6 +216,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         let routine = tokio::spawn(async move {
             builder.stop.print().await;
             println!("{}", builder.fuck_off_on_damage);
+            println!("{}", builder.fuck_off_on_observer_push);
             println!("{:?}", builder.tmp_handshake_timeout);
             // log safe builder info + local_addr into db
 
@@ -347,6 +356,7 @@ impl<C: Connection + Clone> BuildServerDefault<C> for Stop<C> {
             accept_bincode: true,
             accept_msgpack: true,
             fuck_off_on_damage: false,
+            fuck_off_on_observer_push: false,
             ctrlc_shutdown: true,
             ws_handshake_timeout: Duration::from_secs_f64(1.5),
             tmp_handshake_timeout: Duration::from_secs_f64(3.0),
