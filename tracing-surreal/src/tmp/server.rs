@@ -1,4 +1,4 @@
-use crate::{stop::Stop, tracing_msg::Role};
+use crate::{stop::Stop, tracing_msg::ClientRole};
 use est::task::CloseAndWait;
 use std::{
     collections::HashMap,
@@ -270,7 +270,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                         query,
                                         auth_args.pusher_token,
                                         role_send,
-                                        Role::Pusher,
+                                        ClientRole::Pusher,
                                         resp
                                     );
                                 }
@@ -280,7 +280,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                         query,
                                         auth_args.observer_token,
                                         role_send,
-                                        Role::Observer,
+                                        ClientRole::Observer,
                                         resp
                                     );
                                 }
@@ -290,7 +290,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                         query,
                                         auth_args.director_token,
                                         role_send,
-                                        Role::Director,
+                                        ClientRole::Director,
                                         resp
                                     );
                                 }
@@ -313,7 +313,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                     };
 
                     println!("inner_stream: {:?}", stream);
-                    println!("inner_role: {:?}", role);
+                    println!("client_role: {:?}", role);
                     println!("query_map: {:?}", query_map);
                 });
             }
@@ -358,8 +358,8 @@ impl<C: Connection + Clone> BuildServerDefault<C> for Stop<C> {
 fn token_auth(
     query: Option<Result<HashMap<String, String>, serde_qs::Error>>,
     token_need: Option<String>,
-    role_send: oneshot::Sender<Role>,
-    role: Role,
+    role_send: oneshot::Sender<ClientRole>,
+    role: ClientRole,
     resp: Response,
 ) -> Result<Response, ErrorResponse> {
     if let Some(token_need) = token_need {

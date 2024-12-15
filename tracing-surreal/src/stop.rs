@@ -1,4 +1,4 @@
-use crate::tracing_msg::{current_exe_name, ClientHandshake, MsgFormat, Role};
+use crate::tracing_msg::{current_exe_name, ClientHandshake, ClientRole, MsgFormat};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -26,6 +26,25 @@ pub struct Stop<C: Connection> {
 #[derive(Deserialize)]
 struct RID {
     id: RecordId,
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[serde(rename_all = "lowercase")]
+enum Role {
+    Host,
+    Pusher,
+    Observer,
+    Director,
+}
+
+impl From<ClientRole> for Role {
+    fn from(value: ClientRole) -> Self {
+        match value {
+            ClientRole::Pusher => Self::Pusher,
+            ClientRole::Observer => Self::Observer,
+            ClientRole::Director => Self::Director,
+        }
+    }
 }
 
 impl<C: Connection> Stop<C> {
@@ -94,7 +113,7 @@ impl<C: Connection> Stop<C> {
     pub async fn client_handshake(
         &self,
         client_info: ClientHandshake,
-        client_role: Role,
+        client_role: ClientRole,
         client_addr: SocketAddr,
         query_map: Option<HashMap<String, String>>,
     ) -> surrealdb::Result<Self> {
@@ -103,7 +122,7 @@ impl<C: Connection> Stop<C> {
             &self.session_id,
             &self.formatted_timestamp,
             &client_info.client_name,
-            client_role,
+            client_role.into(),
             &client_info.proc_name,
             client_info.proc_id,
             Some(client_info.msg_format),
