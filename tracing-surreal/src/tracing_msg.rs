@@ -3,7 +3,8 @@ use derive_more::Display;
 use est::{task::TaskId, thread::ThreadId};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::num::NonZeroU64;
+use std::{num::NonZeroU64, thread};
+use tokio::task;
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -34,6 +35,18 @@ pub struct Handshake {
 #[serde(transparent)]
 pub struct SpanId(pub NonZeroU64);
 
+impl From<tracing_core::span::Id> for SpanId {
+    fn from(value: tracing_core::span::Id) -> Self {
+        Self(value.into_non_zero_u64())
+    }
+}
+
+impl From<&tracing_core::span::Id> for SpanId {
+    fn from(value: &tracing_core::span::Id) -> Self {
+        Self(value.into_non_zero_u64())
+    }
+}
+
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Hash, Eq, PartialEq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Level {
@@ -44,6 +57,18 @@ pub enum Level {
     Error,
 }
 
+impl From<tracing_core::Level> for Level {
+    fn from(value: tracing_core::Level) -> Self {
+        match value {
+            tracing_core::Level::TRACE => Self::Trace,
+            tracing_core::Level::DEBUG => Self::Debug,
+            tracing_core::Level::INFO => Self::Info,
+            tracing_core::Level::WARN => Self::Warn,
+            tracing_core::Level::ERROR => Self::Error,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Parent {
@@ -51,6 +76,9 @@ pub enum Parent {
     Current,
     Explicit(SpanId),
 }
+
+// todo: impl From<&tracing_core::span::Attributes> for Parent
+// todo: impl From<&tracing_core::Event> for Parent
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "type", content = "value", rename_all = "lowercase")]
@@ -66,16 +94,23 @@ enum Value {
     Error(String),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+#[serde(transparent)]
 pub struct Payload(IndexMap<String, Vec<Value>>);
+
+// todo: impl Deref for Payload
+// todo: impl tracing_core::field::Visit for Payload
+// todo: impl From<&tracing_core::span::Attributes> for Payload
+// todo: impl From<&tracing_core::span::Record> for Payload
+// todo: impl From<&tracing_core::Event> for Payload
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum MsgBody {
     OnNewSpan {
-        id: SpanId,
+        span_id: SpanId,
+        level: Level,
         name: String,
         target: String,
-        level: Level,
         module_path: Option<String>,
         file: Option<String>,
         line: Option<u32>,
@@ -86,14 +121,14 @@ pub enum MsgBody {
         payload: Payload,
     },
     OnFollowsFrom {
-        id: SpanId,
+        span_id: SpanId,
         follows: SpanId,
     },
     OnEvent {
+        message: String,
+        level: Level,
         name: String,
         target: String,
-        level: Level,
-        message: String,
         module_path: Option<String>,
         file: Option<String>,
         line: Option<u32>,
@@ -101,19 +136,23 @@ pub enum MsgBody {
         payload: Payload,
     },
     OnEnter {
-        id: SpanId,
+        span_id: SpanId,
     },
     OnExit {
-        id: SpanId,
+        span_id: SpanId,
     },
     OnClose {
-        id: SpanId,
+        span_id: SpanId,
     },
     OnIdChange {
-        old: SpanId,
-        new: SpanId,
+        old_span: SpanId,
+        new_span: SpanId,
     },
 }
+
+// todo: fn on_new_span() etc...
+// todo: impl From<(&tracing_core::Metadata, Parent, Payload, SpanId)> for MsgBody
+// todo: impl From<(&tracing_core::Metadata, Parent, Payload, String)> for MsgBody
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TracingMsg {
@@ -124,7 +163,25 @@ pub struct TracingMsg {
     pub body: MsgBody,
 }
 
-// todo: PushMsg, tracing-core, tracing-subscriber::Layer
+impl From<MsgBody> for TracingMsg {
+    fn from(body: MsgBody) -> Self {
+        let thread = thread::current();
+        let timestamp = Local::now();
+        let thread_name = thread.name().map(From::from);
+        let thread_id = thread.id().into();
+        let task_id = task::try_id().map(From::from);
+
+        Self {
+            timestamp,
+            thread_name,
+            thread_id,
+            task_id,
+            body,
+        }
+    }
+}
+
+// todo: PushMsg, TracingMsg, MsgLayer, MsgRoutine, tracing-core, tracing-subscriber::Layer
 
 // Need to gate this under `experimental` feature flag.
 #[doc(hidden)]
