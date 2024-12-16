@@ -1,4 +1,4 @@
-use crate::tracing_msg::{current_exe_name, ClientHandshake, ClientRole, MsgFormat};
+use crate::tracing_msg::{current_exe_name, ClientRole, Handshake, MsgFormat};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -112,7 +112,7 @@ impl<C: Connection> Stop<C> {
 
     pub async fn client_handshake(
         &self,
-        client_info: ClientHandshake,
+        client_info: Handshake,
         client_role: ClientRole,
         client_addr: SocketAddr,
         query_map: Option<HashMap<String, String>>,

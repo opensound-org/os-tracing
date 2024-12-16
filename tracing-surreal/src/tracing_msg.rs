@@ -23,7 +23,7 @@ pub enum MsgFormat {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ClientHandshake {
+pub struct Handshake {
     pub client_name: String,
     pub proc_name: String,
     pub proc_id: u32,
