@@ -181,6 +181,7 @@ impl From<MsgBody> for TracingMsg {
     }
 }
 
+// todo: #[trait_variant::make(Send)]
 // todo: PushMsg, TracingMsg, MsgLayer, MsgRoutine, tracing-core, tracing-subscriber::Layer
 
 // Need to gate this under `experimental` feature flag.
