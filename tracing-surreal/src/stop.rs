@@ -1,8 +1,8 @@
-use crate::tracing_msg::{current_exe_name, ClientRole, Handshake, MsgFormat};
+use crate::tracing_msg::{ClientRole, Handshake, MsgFormat, ProcEnv};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, io, net::SocketAddr, process};
+use std::{collections::HashMap, io, net::SocketAddr};
 use surrealdb::{Connection, RecordId, Surreal};
 use thiserror::Error;
 use ulid::Ulid;
@@ -89,8 +89,7 @@ impl<C: Connection> Stop<C> {
         let formatted_timestamp = a_timestamp.format("%y%m%d-%H%M%S").to_string();
         let client_name = app;
         let client_role = Role::Host;
-        let proc_name = current_exe_name()?;
-        let proc_id = process::id();
+        let proc_env = ProcEnv::create()?;
         let msg_format = None;
         let client_addr = None;
         let query_map = None;
@@ -101,8 +100,7 @@ impl<C: Connection> Stop<C> {
             &formatted_timestamp,
             client_name,
             client_role,
-            &proc_name,
-            proc_id,
+            &proc_env,
             msg_format,
             client_addr,
             &query_map,
@@ -123,8 +121,7 @@ impl<C: Connection> Stop<C> {
             &self.formatted_timestamp,
             &client_info.client_name,
             client_role.into(),
-            &client_info.proc_name,
-            client_info.proc_id,
+            &client_info.proc_env,
             Some(client_info.msg_format),
             Some(client_addr),
             &query_map,
@@ -138,8 +135,7 @@ impl<C: Connection> Stop<C> {
         formatted_timestamp: &str,
         client_name: &str,
         client_role: Role,
-        proc_name: &str,
-        proc_id: u32,
+        proc_env: &ProcEnv,
         msg_format: Option<MsgFormat>,
         client_addr: Option<SocketAddr>,
         query_map: &Option<HashMap<String, String>>,
@@ -161,8 +157,8 @@ impl<C: Connection> Stop<C> {
         let b_session_id = session_id.clone();
         let c_client_name = client_name.into();
         let d_client_role = client_role;
-        let e_proc_name = proc_name.into();
-        let f_proc_id = proc_id;
+        let e_proc_name = proc_env.proc_name.clone();
+        let f_proc_id = proc_env.proc_id;
         let g_msg_format = msg_format;
         let h_client_addr = client_addr;
         let i_query_map = query_map.clone();

@@ -24,11 +24,26 @@ pub enum MsgFormat {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Handshake {
-    pub client_name: String,
+pub struct ProcEnv {
     pub proc_name: String,
     pub proc_id: u32,
+}
+
+impl ProcEnv {
+    // Need to gate this under `sysinfo` & `wgpu` feature flag.
+    pub fn create() -> std::io::Result<Self> {
+        let proc_name = current_exe_name()?;
+        let proc_id = std::process::id();
+
+        Ok(Self { proc_name, proc_id })
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+pub struct Handshake {
+    pub client_name: String,
     pub msg_format: MsgFormat,
+    pub proc_env: ProcEnv,
 }
 
 #[derive(Debug, Display, Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
