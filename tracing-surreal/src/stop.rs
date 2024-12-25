@@ -21,6 +21,8 @@ pub struct Stop<C: Connection> {
     session_id: RecordId,
     formatted_timestamp: String,
     client_id: RecordId,
+    can_push: bool,
+    can_observe: bool,
 }
 
 #[derive(Deserialize)]
@@ -35,6 +37,22 @@ enum Role {
     Pusher,
     Observer,
     Director,
+}
+
+impl Role {
+    fn can_push(&self) -> bool {
+        match self {
+            Self::Observer => false,
+            _ => true,
+        }
+    }
+
+    fn can_observe(&self) -> bool {
+        match self {
+            Self::Pusher => false,
+            _ => true,
+        }
+    }
 }
 
 impl From<ClientRole> for Role {
@@ -184,12 +202,16 @@ impl<C: Connection> Stop<C> {
         let session_id = session_id.clone();
         let formatted_timestamp = formatted_timestamp.into();
         let client_id = rid.unwrap().id;
+        let can_push = client_role.can_push();
+        let can_observe = client_role.can_observe();
 
         Ok(Self {
             db,
             session_id,
             formatted_timestamp,
             client_id,
+            can_push,
+            can_observe,
         })
     }
 
@@ -198,5 +220,7 @@ impl<C: Connection> Stop<C> {
         println!("{}", self.session_id);
         println!("{}", self.formatted_timestamp);
         println!("{}", self.client_id);
+        println!("{}", self.can_push);
+        println!("{}", self.can_observe);
     }
 }
