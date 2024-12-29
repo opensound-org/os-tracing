@@ -107,10 +107,10 @@ impl<C: Connection> Stop<C> {
         let formatted_timestamp = a_timestamp.format("%y%m%d-%H%M%S").to_string();
         let client_name = app;
         let client_role = Role::Host;
-        let proc_env = ProcEnv::create()?;
         let msg_format = None;
         let client_addr = None;
         let query_map = None;
+        let proc_env = ProcEnv::create_async().await;
 
         Ok(Self::handshake_internal(
             &db,
@@ -118,10 +118,10 @@ impl<C: Connection> Stop<C> {
             &formatted_timestamp,
             client_name,
             client_role,
-            &proc_env,
             msg_format,
             client_addr,
             &query_map,
+            &proc_env,
         )
         .await?)
     }
@@ -139,10 +139,10 @@ impl<C: Connection> Stop<C> {
             &self.formatted_timestamp,
             &client_info.client_name,
             client_role.into(),
-            &client_info.proc_env,
             Some(client_info.msg_format),
             Some(client_addr),
             &query_map,
+            &client_info.proc_env,
         )
         .await
     }
@@ -153,10 +153,10 @@ impl<C: Connection> Stop<C> {
         formatted_timestamp: &str,
         client_name: &str,
         client_role: Role,
-        proc_env: &ProcEnv,
         msg_format: Option<MsgFormat>,
         client_addr: Option<SocketAddr>,
         query_map: &Option<HashMap<String, String>>,
+        proc_env: &Option<ProcEnv>,
     ) -> surrealdb::Result<Self> {
         #[derive(Serialize)]
         struct ClientRecord {
@@ -164,32 +164,29 @@ impl<C: Connection> Stop<C> {
             b_session_id: RecordId,
             c_client_name: String,
             d_client_role: Role,
-            e_proc_name: String,
-            f_proc_id: u32,
-            g_msg_format: Option<MsgFormat>,
-            h_client_addr: Option<SocketAddr>,
-            i_query_map: Option<HashMap<String, String>>,
+            e_msg_format: Option<MsgFormat>,
+            f_client_addr: Option<SocketAddr>,
+            g_query_map: Option<HashMap<String, String>>,
+            h_proc_env: Option<ProcEnv>,
         }
 
         let a_timestamp = Local::now();
         let b_session_id = session_id.clone();
         let c_client_name = client_name.into();
         let d_client_role = client_role;
-        let e_proc_name = proc_env.proc_name.clone();
-        let f_proc_id = proc_env.proc_id;
-        let g_msg_format = msg_format;
-        let h_client_addr = client_addr;
-        let i_query_map = query_map.clone();
+        let e_msg_format = msg_format;
+        let f_client_addr = client_addr;
+        let g_query_map = query_map.clone();
+        let h_proc_env = proc_env.clone();
         let record = ClientRecord {
             a_timestamp,
             b_session_id,
             c_client_name,
             d_client_role,
-            e_proc_name,
-            f_proc_id,
-            g_msg_format,
-            h_client_addr,
-            i_query_map,
+            e_msg_format,
+            f_client_addr,
+            g_query_map,
+            h_proc_env,
         };
         let rid: Option<RID> = db
             .create((

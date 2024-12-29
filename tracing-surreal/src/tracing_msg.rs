@@ -4,7 +4,7 @@ use est::{task::TaskId, thread::ThreadId};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{num::NonZeroU64, thread};
-use tokio::task;
+use tokio::task::{self, spawn_blocking};
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -25,17 +25,21 @@ pub enum MsgFormat {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct ProcEnv {
-    pub proc_name: String,
     pub proc_id: u32,
+    pub proc_name: Option<String>,
 }
 
 impl ProcEnv {
-    // Need to gate this under `sysinfo` & `wgpu` feature flag.
-    pub fn create() -> std::io::Result<Self> {
-        let proc_name = current_exe_name()?;
+    // Need to gate this under `proc-env` & `sysinfo` & `wgpu` feature flag.
+    pub fn create() -> Self {
         let proc_id = std::process::id();
+        let proc_name = current_exe_name().ok();
 
-        Ok(Self { proc_name, proc_id })
+        Self { proc_id, proc_name }
+    }
+
+    pub async fn create_async() -> Option<Self> {
+        spawn_blocking(Self::create).await.ok()
     }
 }
 
@@ -43,7 +47,7 @@ impl ProcEnv {
 pub struct Handshake {
     pub client_name: String,
     pub msg_format: MsgFormat,
-    pub proc_env: ProcEnv,
+    pub proc_env: Option<ProcEnv>,
 }
 
 #[derive(Debug, Display, Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
