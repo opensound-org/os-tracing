@@ -4,51 +4,13 @@ use est::{task::TaskId, thread::ThreadId};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{num::NonZeroU64, thread};
-use tokio::task::{self, spawn_blocking};
+use tokio::task;
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[serde(rename_all = "lowercase")]
-pub enum ClientRole {
-    Pusher,
-    Observer,
-    Director,
-}
+pub(crate) mod handshake;
+pub(crate) mod proc_env;
 
-#[derive(Serialize, Deserialize, Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[serde(rename_all = "lowercase")]
-pub enum MsgFormat {
-    Json,
-    #[default]
-    Bincode,
-    Msgpack,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ProcEnv {
-    pub proc_id: u32,
-    pub proc_name: Option<String>,
-}
-
-impl ProcEnv {
-    // Need to gate this under `proc-env` & `sysinfo` & `wgpu` feature flag.
-    pub fn create() -> Self {
-        let proc_id = std::process::id();
-        let proc_name = current_exe_name().ok();
-
-        Self { proc_id, proc_name }
-    }
-
-    pub async fn create_async() -> Option<Self> {
-        spawn_blocking(Self::create).await.ok()
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Handshake {
-    pub client_name: String,
-    pub msg_format: MsgFormat,
-    pub proc_env: Option<ProcEnv>,
-}
+pub use handshake::{ClientRole, Handshake, MsgFormat};
+pub use proc_env::ProcEnv;
 
 #[derive(Debug, Display, Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(transparent)]
@@ -202,13 +164,3 @@ impl From<MsgBody> for TracingMsg {
 
 // todo: #[trait_variant::make(Send)]
 // todo: PushMsg, TracingMsg, MsgLayer, MsgRoutine, tracing-core, tracing-subscriber::Layer
-
-// Need to gate this under `experimental` feature flag.
-#[doc(hidden)]
-pub fn current_exe_name() -> std::io::Result<String> {
-    Ok(std::env::current_exe()?
-        .file_name()
-        .expect("this should not happen here")
-        .to_string_lossy()
-        .into())
-}
