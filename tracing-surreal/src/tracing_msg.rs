@@ -7,7 +7,7 @@ use std::{num::NonZeroU64, thread};
 use tokio::task;
 
 pub(crate) mod handshake;
-pub(crate) mod proc_env;
+pub mod proc_env;
 
 pub use handshake::{ClientRole, Handshake, MsgFormat};
 pub use proc_env::ProcEnv;

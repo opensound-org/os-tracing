@@ -167,7 +167,7 @@ impl<C: Connection> Stop<C> {
             e_msg_format: Option<MsgFormat>,
             f_client_addr: Option<SocketAddr>,
             g_query_map: Option<HashMap<String, String>>,
-            h_proc_env: Option<ProcEnv>,
+            h_proc_env: Option<Value>,
         }
 
         let a_timestamp = Local::now();
@@ -177,7 +177,7 @@ impl<C: Connection> Stop<C> {
         let e_msg_format = msg_format;
         let f_client_addr = client_addr;
         let g_query_map = query_map.clone();
-        let h_proc_env = proc_env.clone();
+        let h_proc_env = proc_env.as_ref().and_then(|v| serde_json::to_value(v).ok());
         let record = ClientRecord {
             a_timestamp,
             b_session_id,

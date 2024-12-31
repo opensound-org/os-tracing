@@ -18,7 +18,7 @@ pub enum MsgFormat {
     Msgpack,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct Handshake {
     pub client_name: String,
     pub msg_format: MsgFormat,
