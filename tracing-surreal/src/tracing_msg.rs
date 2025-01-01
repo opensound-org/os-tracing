@@ -1,9 +1,9 @@
 use chrono::{DateTime, Local};
 use derive_more::Display;
 use est::{task::TaskId, thread::ThreadId};
-use indexmap::IndexMap;
+use indexmap::{map::Entry, IndexMap};
 use serde::{Deserialize, Serialize};
-use std::{num::NonZeroU64, thread};
+use std::{num::NonZeroU64, ops::Deref, thread};
 use tokio::task;
 
 pub(crate) mod handshake;
@@ -58,12 +58,33 @@ pub enum Parent {
     Explicit(SpanId),
 }
 
-// todo: impl From<&tracing_core::span::Attributes> for Parent
-// todo: impl From<&tracing_core::Event> for Parent
+impl From<&tracing_core::span::Attributes<'_>> for Parent {
+    fn from(attrs: &tracing_core::span::Attributes<'_>) -> Self {
+        if let Some(parent) = attrs.parent() {
+            Self::Explicit(parent.into())
+        } else if attrs.is_root() {
+            Self::Root
+        } else {
+            Self::Current
+        }
+    }
+}
+
+impl From<&tracing_core::Event<'_>> for Parent {
+    fn from(event: &tracing_core::Event<'_>) -> Self {
+        if let Some(parent) = event.parent() {
+            Self::Explicit(parent.into())
+        } else if event.is_root() {
+            Self::Root
+        } else {
+            Self::Current
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "type", content = "value", rename_all = "lowercase")]
-enum Value {
+pub enum Value {
     Debug(String),
     F64(f64),
     I64(i64),
@@ -72,18 +93,135 @@ enum Value {
     U128(u128),
     Bool(bool),
     String(String),
+    Bytes(Vec<u8>),
     Error(String),
+}
+
+impl Value {
+    fn get_text(&self) -> Option<String> {
+        match self {
+            Self::Debug(value) => Some(value.clone()),
+            Self::String(value) => Some(value.clone()),
+            Self::Error(value) => Some(value.clone()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
 #[serde(transparent)]
 pub struct Payload(IndexMap<String, Vec<Value>>);
 
-// todo: impl Deref for Payload
-// todo: impl tracing_core::field::Visit for Payload
-// todo: impl From<&tracing_core::span::Attributes> for Payload
-// todo: impl From<&tracing_core::span::Record> for Payload
-// todo: impl From<&tracing_core::Event> for Payload
+impl Payload {
+    pub fn insert_empty(&mut self, key: &str) {
+        self.0.entry(key.into()).or_default();
+    }
+
+    pub fn record(&mut self, key: &str, value: Value) {
+        match self.0.entry(key.into()) {
+            Entry::Occupied(entry) => {
+                entry.into_mut().push(value);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(vec![value]);
+            }
+        }
+    }
+
+    fn record_field(&mut self, field: &tracing_core::Field, value: Value) {
+        self.record(field.name(), value);
+    }
+}
+
+impl Deref for Payload {
+    type Target = IndexMap<String, Vec<Value>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl tracing_core::field::Visit for Payload {
+    fn record_debug(&mut self, field: &tracing_core::Field, value: &dyn std::fmt::Debug) {
+        self.record_field(field, Value::Debug(format!("{:?}", value)));
+    }
+
+    fn record_f64(&mut self, field: &tracing_core::Field, value: f64) {
+        self.record_field(field, Value::F64(value));
+    }
+
+    fn record_i64(&mut self, field: &tracing_core::Field, value: i64) {
+        self.record_field(field, Value::I64(value));
+    }
+
+    fn record_u64(&mut self, field: &tracing_core::Field, value: u64) {
+        self.record_field(field, Value::U64(value));
+    }
+
+    fn record_i128(&mut self, field: &tracing_core::Field, value: i128) {
+        self.record_field(field, Value::I128(value));
+    }
+
+    fn record_u128(&mut self, field: &tracing_core::Field, value: u128) {
+        self.record_field(field, Value::U128(value));
+    }
+
+    fn record_bool(&mut self, field: &tracing_core::Field, value: bool) {
+        self.record_field(field, Value::Bool(value));
+    }
+
+    fn record_str(&mut self, field: &tracing_core::Field, value: &str) {
+        self.record_field(field, Value::String(value.into()));
+    }
+
+    fn record_bytes(&mut self, field: &tracing_core::Field, value: &[u8]) {
+        self.record_field(field, Value::Bytes(value.into()));
+    }
+
+    fn record_error(
+        &mut self,
+        field: &tracing_core::Field,
+        value: &(dyn std::error::Error + 'static),
+    ) {
+        self.record_field(field, Value::Error(value.to_string()));
+    }
+}
+
+impl From<tracing_core::field::Iter> for Payload {
+    fn from(iter: tracing_core::field::Iter) -> Self {
+        let mut payload = Self::default();
+
+        for field in iter {
+            payload.insert_empty(field.name());
+        }
+
+        payload
+    }
+}
+
+impl From<&tracing_core::span::Attributes<'_>> for Payload {
+    fn from(attrs: &tracing_core::span::Attributes<'_>) -> Self {
+        let mut payload = attrs.fields().iter().into();
+        attrs.record(&mut payload);
+        payload
+    }
+}
+
+impl From<&tracing_core::Event<'_>> for Payload {
+    fn from(event: &tracing_core::Event<'_>) -> Self {
+        let mut payload = event.fields().into();
+        event.record(&mut payload);
+        payload
+    }
+}
+
+impl From<&tracing_core::span::Record<'_>> for Payload {
+    fn from(record: &tracing_core::span::Record<'_>) -> Self {
+        let mut payload = Self::default();
+        record.record(&mut payload);
+        payload
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum MsgBody {
@@ -131,9 +269,116 @@ pub enum MsgBody {
     },
 }
 
-// todo: fn on_new_span() etc...
-// todo: impl From<(&tracing_core::Metadata, Parent, Payload, SpanId)> for MsgBody
-// todo: impl From<(&tracing_core::Metadata, Parent, Payload, String)> for MsgBody
+impl MsgBody {
+    pub fn on_new_span(
+        attrs: &tracing_core::span::Attributes<'_>,
+        id: &tracing_core::span::Id,
+    ) -> Self {
+        let metadata = attrs.metadata();
+        let parent = Parent::from(attrs);
+        let payload = Payload::from(attrs);
+        let span_id = SpanId::from(id);
+
+        (metadata, parent, payload, span_id).into()
+    }
+
+    pub fn on_record(record: &tracing_core::span::Record<'_>) -> Self {
+        let payload = record.into();
+        Self::OnRecord { payload }
+    }
+
+    pub fn on_follows_from(id: &tracing_core::span::Id, follows: &tracing_core::span::Id) -> Self {
+        let span_id = id.into();
+        let follows = follows.into();
+
+        Self::OnFollowsFrom { span_id, follows }
+    }
+
+    pub fn on_event(event: &tracing_core::Event<'_>) -> Self {
+        let metadata = event.metadata();
+        let parent = Parent::from(event);
+        let payload = Payload::from(event);
+        let message = payload
+            .get("message")
+            .map(Deref::deref)
+            .and_then(<[_]>::first)
+            .and_then(Value::get_text)
+            .unwrap_or_default();
+
+        (metadata, parent, payload, message).into()
+    }
+
+    pub fn on_enter(id: &tracing_core::span::Id) -> Self {
+        let span_id = id.into();
+        Self::OnEnter { span_id }
+    }
+
+    pub fn on_exit(id: &tracing_core::span::Id) -> Self {
+        let span_id = id.into();
+        Self::OnExit { span_id }
+    }
+
+    pub fn on_close(id: &tracing_core::span::Id) -> Self {
+        let span_id = id.into();
+        Self::OnClose { span_id }
+    }
+
+    pub fn on_id_change(
+        old_span: &tracing_core::span::Id,
+        new_span: &tracing_core::span::Id,
+    ) -> Self {
+        let old_span = old_span.into();
+        let new_span = new_span.into();
+
+        Self::OnIdChange { old_span, new_span }
+    }
+}
+
+impl From<(&tracing_core::Metadata<'_>, Parent, Payload, SpanId)> for MsgBody {
+    fn from(
+        (metadata, parent, payload, span_id): (
+            &tracing_core::Metadata<'_>,
+            Parent,
+            Payload,
+            SpanId,
+        ),
+    ) -> Self {
+        Self::OnNewSpan {
+            span_id,
+            level: (*metadata.level()).into(),
+            name: metadata.name().into(),
+            target: metadata.target().into(),
+            module_path: metadata.module_path().map(From::from),
+            file: metadata.file().map(From::from),
+            line: metadata.line(),
+            parent,
+            payload,
+        }
+    }
+}
+
+impl From<(&tracing_core::Metadata<'_>, Parent, Payload, String)> for MsgBody {
+    fn from(
+        (metadata, parent, payload, message): (
+            &tracing_core::Metadata<'_>,
+            Parent,
+            Payload,
+            String,
+        ),
+    ) -> Self {
+        Self::OnEvent {
+            message,
+            level: (*metadata.level()).into(),
+            name: metadata.name().into(),
+            target: metadata.target().into(),
+            module_path: metadata.module_path().map(From::from),
+            file: metadata.file().map(From::from),
+            line: metadata.line(),
+            parent,
+            payload,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TracingMsg {
