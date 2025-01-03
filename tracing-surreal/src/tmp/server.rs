@@ -1,4 +1,7 @@
-use crate::{stop::Stop, tracing_msg::ClientRole};
+use crate::{
+    stop::Stop,
+    tracing_msg::{ClientRole, GracefulType},
+};
 use est::task::CloseAndWait;
 use std::{
     collections::HashMap,
@@ -16,7 +19,6 @@ use tokio::{
     signal::ctrl_c,
     sync::oneshot,
     task::{JoinError, JoinHandle},
-    time::timeout,
 };
 use tokio_tungstenite::{
     accept_hdr_async,
@@ -25,7 +27,7 @@ use tokio_tungstenite::{
         http::StatusCode,
     },
 };
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tokio_util::{sync::CancellationToken, task::TaskTracker, time::FutureExt};
 
 #[derive(Debug, Clone)]
 struct AuthArgs {
@@ -53,17 +55,11 @@ pub struct ServerBuilder<C: Connection> {
 }
 
 #[derive(Error, Debug)]
-pub enum ServerError {
+pub enum StartError {
     #[error("no message format available")]
     NoMsgFormat,
     #[error("io error: `{0}`")]
     Io(#[from] io::Error),
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum GracefulType {
-    CtrlC,
-    Explicit,
 }
 
 impl<C: Connection + Clone> ServerBuilder<C> {
@@ -203,9 +199,9 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         })
     }
 
-    pub async fn start(self) -> Result<ServerHandle, ServerError> {
+    pub async fn start(self) -> Result<ServerHandle, StartError> {
         if !self.accept_json && !self.accept_bincode && !self.accept_msgpack {
-            return Err(ServerError::NoMsgFormat);
+            return Err(StartError::NoMsgFormat);
         }
 
         let listener = TcpListener::bind(self.bind_addrs.as_slice()).await?;
@@ -258,55 +254,52 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                             println!("shutdown_waiter.cancelled()");
                             return;
                         }
-                        res = timeout(
-                            builder.ws_handshake_timeout,
-                            accept_hdr_async(stream, move |req: &Request, resp| {
-                                let uri = req.uri();
-                                let path = uri.path();
-                                let query: Option<
-                                    Result<HashMap<String, String>, serde_qs::Error>,
-                                > = uri.query().map(serde_qs::from_str);
+                        res = accept_hdr_async(stream, move |req: &Request, resp| {
+                            let uri = req.uri();
+                            let path = uri.path();
+                            let query: Option<Result<HashMap<String, String>, serde_qs::Error>> =
+                                uri.query().map(serde_qs::from_str);
 
-                                println!("path: {}", path);
-                                println!("query: {:?}", query);
+                            println!("path: {}", path);
+                            println!("query: {:?}", query);
 
-                                if let Some(Ok(map)) = &query {
-                                    map_send.send(map.clone()).ok();
-                                }
+                            if let Some(Ok(map)) = &query {
+                                map_send.send(map.clone()).ok();
+                            }
 
-                                if path == auth_args.pusher_path {
-                                    return token_auth(
-                                        query,
-                                        auth_args.pusher_token,
-                                        role_send,
-                                        ClientRole::Pusher,
-                                        resp
-                                    );
-                                }
+                            if path == auth_args.pusher_path {
+                                return token_auth(
+                                    query,
+                                    auth_args.pusher_token,
+                                    role_send,
+                                    ClientRole::Pusher,
+                                    resp,
+                                );
+                            }
 
-                                if path == auth_args.observer_path {
-                                    return token_auth(
-                                        query,
-                                        auth_args.observer_token,
-                                        role_send,
-                                        ClientRole::Observer,
-                                        resp
-                                    );
-                                }
+                            if path == auth_args.observer_path {
+                                return token_auth(
+                                    query,
+                                    auth_args.observer_token,
+                                    role_send,
+                                    ClientRole::Observer,
+                                    resp,
+                                );
+                            }
 
-                                if path == auth_args.director_path {
-                                    return token_auth(
-                                        query,
-                                        auth_args.director_token,
-                                        role_send,
-                                        ClientRole::Director,
-                                        resp
-                                    );
-                                }
+                            if path == auth_args.director_path {
+                                return token_auth(
+                                    query,
+                                    auth_args.director_token,
+                                    role_send,
+                                    ClientRole::Director,
+                                    resp,
+                                );
+                            }
 
-                                Err(err_resp("invalid path!", StatusCode::NOT_FOUND))
-                            }),
-                        ) => match res {
+                            Err(err_resp("invalid path!", StatusCode::NOT_FOUND))
+                        })
+                        .timeout(builder.ws_handshake_timeout) => match res {
                             Err(err) => {
                                 println!("outer_err: {}", err);
                                 return;
@@ -416,7 +409,7 @@ fn err_resp(text: &str, status: StatusCode) -> ErrorResponse {
     resp
 }
 
-type RoutineOutput = io::Result<GracefulType>;
+type RoutineOutput = Result<GracefulType, io::Error>;
 type ServerOutput = Result<RoutineOutput, JoinError>;
 
 #[derive(Debug)]

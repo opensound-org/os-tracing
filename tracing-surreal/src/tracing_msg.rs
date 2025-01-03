@@ -3,13 +3,15 @@ use derive_more::Display;
 use est::{task::TaskId, thread::ThreadId};
 use indexmap::{map::Entry, IndexMap};
 use serde::{Deserialize, Serialize};
-use std::{num::NonZeroU64, ops::Deref, thread};
+use std::{future::Future, num::NonZeroU64, ops::Deref, thread};
 use tokio::task;
 
 pub(crate) mod handshake;
+pub mod layer;
 pub mod proc_env;
 
 pub use handshake::{ClientRole, Handshake, MsgFormat};
+pub use layer::TracingLayerDefault;
 pub use proc_env::ProcEnv;
 
 #[derive(Debug, Display, Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
@@ -237,6 +239,7 @@ pub enum MsgBody {
         payload: Payload,
     },
     OnRecord {
+        span_id: SpanId,
         payload: Payload,
     },
     OnFollowsFrom {
@@ -282,13 +285,21 @@ impl MsgBody {
         (metadata, parent, payload, span_id).into()
     }
 
-    pub fn on_record(record: &tracing_core::span::Record<'_>) -> Self {
-        let payload = record.into();
-        Self::OnRecord { payload }
+    pub fn on_record(
+        span: &tracing_core::span::Id,
+        values: &tracing_core::span::Record<'_>,
+    ) -> Self {
+        let span_id = span.into();
+        let payload = values.into();
+
+        Self::OnRecord { span_id, payload }
     }
 
-    pub fn on_follows_from(id: &tracing_core::span::Id, follows: &tracing_core::span::Id) -> Self {
-        let span_id = id.into();
+    pub fn on_follows_from(
+        span: &tracing_core::span::Id,
+        follows: &tracing_core::span::Id,
+    ) -> Self {
+        let span_id = span.into();
         let follows = follows.into();
 
         Self::OnFollowsFrom { span_id, follows }
@@ -318,17 +329,14 @@ impl MsgBody {
         Self::OnExit { span_id }
     }
 
-    pub fn on_close(id: &tracing_core::span::Id) -> Self {
+    pub fn on_close(id: tracing_core::span::Id) -> Self {
         let span_id = id.into();
         Self::OnClose { span_id }
     }
 
-    pub fn on_id_change(
-        old_span: &tracing_core::span::Id,
-        new_span: &tracing_core::span::Id,
-    ) -> Self {
-        let old_span = old_span.into();
-        let new_span = new_span.into();
+    pub fn on_id_change(old: &tracing_core::span::Id, new: &tracing_core::span::Id) -> Self {
+        let old_span = old.into();
+        let new_span = new.into();
 
         Self::OnIdChange { old_span, new_span }
     }
@@ -407,5 +415,20 @@ impl From<MsgBody> for TracingMsg {
     }
 }
 
-// todo: #[trait_variant::make(Send)]
-// todo: PushMsg, TracingMsg, MsgLayer, MsgRoutine, tracing-core, tracing-subscriber::Layer
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum GracefulType {
+    CtrlC,
+    Explicit,
+}
+
+pub trait CloseTransport: Send {
+    fn close_transport(&mut self) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+}
+
+#[trait_variant::make(Send)]
+pub trait PushMsg {
+    type Error;
+    async fn push_msg(&mut self, msg: TracingMsg) -> Result<(), Self::Error>;
+}
