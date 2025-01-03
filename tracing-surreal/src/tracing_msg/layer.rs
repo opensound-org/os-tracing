@@ -1,10 +1,16 @@
-use super::{CloseTransport, MsgBody, PushMsg, TracingMsg};
-use tokio::{
-    //signal::ctrl_c,
-    sync::mpsc::UnboundedSender,
-    //task::{JoinError, JoinHandle},
+use super::{CloseTransport, GracefulType, MsgBody, PushMsg, TracingMsg};
+use std::{
+    fmt::Debug,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
 };
-//use tokio_util::sync::CancellationToken;
+use tokio::{
+    signal::ctrl_c,
+    sync::mpsc::{unbounded_channel, UnboundedSender},
+    task::{JoinError, JoinHandle},
+};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Clone, Debug)]
 pub struct MsgLayer(UnboundedSender<TracingMsg>);
@@ -83,11 +89,54 @@ impl<S: tracing_core::Subscriber> tracing_subscriber::Layer<S> for MsgLayer {
 
 pub struct MsgRoutine;
 
-pub struct MsgLayerBuiler<T: CloseTransport + PushMsg> {
-    _transport: T,
-    _ctrlc_shutdown: bool,
-    _close_on_shutdown: bool,
-    _abort_on_error: bool,
+#[derive(Clone, Debug)]
+pub struct MsgLayerBuiler<T: CloseTransport + PushMsg + Clone + Debug> {
+    transport: T,
+    ctrlc_shutdown: bool,
+    close_on_shutdown: bool,
+    abort_on_error: bool,
 }
 
-pub trait TracingLayerDefault {}
+impl<T: CloseTransport + PushMsg + Clone + Debug> MsgLayerBuiler<T> {
+    pub fn disable_ctrlc_shutdown(self) -> Self {
+        Self {
+            ctrlc_shutdown: false,
+            ..self
+        }
+    }
+
+    pub fn close_transport_on_shutdown(self) -> Self {
+        Self {
+            close_on_shutdown: true,
+            ..self
+        }
+    }
+
+    pub fn continue_on_error(self) -> Self {
+        Self {
+            abort_on_error: false,
+            ..self
+        }
+    }
+}
+
+pub trait TracingLayerDefault {
+    type Transport: CloseTransport + PushMsg + Clone + Debug;
+    fn tracing_layer_default(&self) -> MsgLayerBuiler<Self::Transport>;
+}
+
+impl<T> TracingLayerDefault for T
+where
+    T: CloseTransport + PushMsg + Clone + Debug,
+{
+    type Transport = T;
+
+    fn tracing_layer_default(&self) -> MsgLayerBuiler<Self::Transport> {
+        MsgLayerBuiler {
+            transport: self.clone(),
+            ctrlc_shutdown: true,
+            close_on_shutdown: false,
+            abort_on_error: true,
+        }
+    }
+}
