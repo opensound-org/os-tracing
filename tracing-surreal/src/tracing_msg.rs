@@ -422,13 +422,13 @@ pub enum GracefulType {
 }
 
 pub trait CloseTransport: Send {
-    fn close_transport(&mut self) -> impl Future<Output = ()> + Send {
+    fn close_transport(&self) -> impl Future<Output = ()> + Send {
         async {}
     }
 }
 
 #[trait_variant::make(Send)]
 pub trait PushMsg {
-    type Error;
-    async fn push_msg(&mut self, msg: TracingMsg) -> Result<(), Self::Error>;
+    type Error: std::error::Error + Send + 'static;
+    async fn push_msg(&self, msg: TracingMsg) -> Result<(), Self::Error>;
 }

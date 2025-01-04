@@ -410,7 +410,7 @@ fn err_resp(text: &str, status: StatusCode) -> ErrorResponse {
 }
 
 type RoutineOutput = Result<GracefulType, io::Error>;
-type ServerOutput = Result<RoutineOutput, JoinError>;
+type HandleOutput = Result<RoutineOutput, JoinError>;
 
 #[derive(Debug)]
 pub struct ServerHandle {
@@ -428,14 +428,14 @@ impl ServerHandle {
         self.shutdown_trigger.cancel();
     }
 
-    pub async fn graceful_shutdown(self) -> ServerOutput {
+    pub async fn graceful_shutdown(self) -> HandleOutput {
         self.trigger_graceful_shutdown();
         self.await
     }
 }
 
 impl Future for ServerHandle {
-    type Output = ServerOutput;
+    type Output = HandleOutput;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.routine).poll(cx)

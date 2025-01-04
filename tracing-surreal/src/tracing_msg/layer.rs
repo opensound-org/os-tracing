@@ -87,7 +87,33 @@ impl<S: tracing_core::Subscriber> tracing_subscriber::Layer<S> for MsgLayer {
     }
 }
 
-pub struct MsgRoutine;
+type RoutineOutput<T> = Result<GracefulType, <T as PushMsg>::Error>;
+type HandleOutput<T> = Result<RoutineOutput<T>, JoinError>;
+
+#[derive(Debug)]
+pub struct MsgRoutine<T: PushMsg> {
+    shutdown_trigger: CancellationToken,
+    routine: JoinHandle<RoutineOutput<T>>,
+}
+
+impl<T: PushMsg> MsgRoutine<T> {
+    pub fn trigger_graceful_shutdown(&self) {
+        self.shutdown_trigger.cancel();
+    }
+
+    pub async fn graceful_shutdown(self) -> HandleOutput<T> {
+        self.trigger_graceful_shutdown();
+        self.await
+    }
+}
+
+impl<T: PushMsg> Future for MsgRoutine<T> {
+    type Output = HandleOutput<T>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.routine).poll(cx)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct MsgLayerBuiler<T: CloseTransport + PushMsg + Clone + Debug> {
@@ -117,6 +143,24 @@ impl<T: CloseTransport + PushMsg + Clone + Debug> MsgLayerBuiler<T> {
             abort_on_error: false,
             ..self
         }
+    }
+
+    pub fn build(self) -> (MsgLayer, MsgRoutine<T>) {
+        let builder = self;
+        let (send, recv) = unbounded_channel();
+        let shutdown_trigger = CancellationToken::new();
+        let shutdown_waiter = shutdown_trigger.clone();
+        let routine = tokio::spawn(async move {
+            // todo
+            Ok(GracefulType::Explicit)
+        });
+        let msg_layer = MsgLayer(send);
+        let msg_routine = MsgRoutine {
+            shutdown_trigger,
+            routine,
+        };
+
+        (msg_layer, msg_routine)
     }
 }
 
