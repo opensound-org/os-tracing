@@ -5,6 +5,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+use thiserror::Error;
 use tokio::{
     signal::ctrl_c,
     sync::mpsc::{unbounded_channel, UnboundedSender},
@@ -87,7 +88,17 @@ impl<S: tracing_core::Subscriber> tracing_subscriber::Layer<S> for MsgLayer {
     }
 }
 
-type RoutineOutput<T> = Result<GracefulType, <T as PushMsg>::Error>;
+#[derive(Error, Debug)]
+pub enum RoutineError<T: PushMsg> {
+    #[error("io error: `{0}`")]
+    Io(#[from] std::io::Error),
+    #[error("MsgLayer dropped")]
+    LayerDropped,
+    #[error("push_msg error: `{0}`")]
+    PushMsgErr(T::Error),
+}
+
+type RoutineOutput<T> = Result<GracefulType, RoutineError<T>>;
 type HandleOutput<T> = Result<RoutineOutput<T>, JoinError>;
 
 #[derive(Debug)]

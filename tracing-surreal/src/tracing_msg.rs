@@ -421,14 +421,14 @@ pub enum GracefulType {
     Explicit,
 }
 
-pub trait CloseTransport: Send {
+pub trait CloseTransport: Send + 'static {
     fn close_transport(&self) -> impl Future<Output = ()> + Send {
         async {}
     }
 }
 
 #[trait_variant::make(Send)]
-pub trait PushMsg {
+pub trait PushMsg: 'static {
     type Error: std::error::Error + Send + 'static;
     async fn push_msg(&self, msg: TracingMsg) -> Result<(), Self::Error>;
 }
