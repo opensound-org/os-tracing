@@ -1,4 +1,6 @@
-use super::{CloseTransport, GracefulType, MsgBody, PushMsg, TracingMsg};
+use super::{
+    CloseErr, CloseErrKind, CloseMsg, CloseTransport, GraceType, MsgBody, PushMsg, TracingMsg,
+};
 use std::{
     fmt::Debug,
     future::Future,
@@ -8,7 +10,7 @@ use std::{
 use thiserror::Error;
 use tokio::{
     signal::ctrl_c,
-    sync::mpsc::{unbounded_channel, UnboundedSender},
+    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     task::{JoinError, JoinHandle},
 };
 use tokio_util::sync::CancellationToken;
@@ -89,7 +91,7 @@ impl<S: tracing_core::Subscriber> tracing_subscriber::Layer<S> for MsgLayer {
 }
 
 #[derive(Error, Debug)]
-pub enum RoutineError<T: PushMsg> {
+pub enum LayerError<T: PushMsg> {
     #[error("io error: `{0}`")]
     Io(#[from] std::io::Error),
     #[error("MsgLayer dropped")]
@@ -98,8 +100,29 @@ pub enum RoutineError<T: PushMsg> {
     PushMsgErr(T::Error),
 }
 
-type RoutineOutput<T> = Result<GracefulType, RoutineError<T>>;
+impl<T: PushMsg> From<&LayerError<T>> for CloseErr {
+    fn from(err: &LayerError<T>) -> Self {
+        let kind = match err {
+            LayerError::Io(_) => CloseErrKind::Io,
+            LayerError::LayerDropped => CloseErrKind::LayerDropped,
+            LayerError::PushMsgErr(_) => CloseErrKind::PushMsgErr,
+        };
+
+        Self::new(kind, err)
+    }
+}
+
+type RoutineOutput<T> = Result<GraceType, LayerError<T>>;
 type HandleOutput<T> = Result<RoutineOutput<T>, JoinError>;
+
+impl<T: PushMsg> From<&RoutineOutput<T>> for CloseMsg {
+    fn from(res: &RoutineOutput<T>) -> Self {
+        match res {
+            Ok(ok) => Self::ok((*ok).into()),
+            Err(err) => Self::err(err.into()),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct MsgRoutine<T: PushMsg> {
@@ -149,21 +172,67 @@ impl<T: CloseTransport + PushMsg + Clone + Debug> MsgLayerBuiler<T> {
         }
     }
 
-    pub fn continue_on_error(self) -> Self {
+    pub fn discard_push_error(self) -> Self {
         Self {
             abort_on_error: false,
             ..self
         }
     }
 
+    async fn close(&mut self, output: RoutineOutput<T>) -> RoutineOutput<T> {
+        if self.close_on_shutdown {
+            self.transport.close_transport(Some((&output).into())).await;
+        }
+
+        output
+    }
+
+    async fn push_msg(&mut self, msg: TracingMsg) -> Result<(), LayerError<T>> {
+        if let Err(err) = self.transport.push_msg(msg).await {
+            if self.abort_on_error {
+                self.close(Err(LayerError::PushMsgErr(err))).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn flush_close(
+        mut self,
+        mut recv: UnboundedReceiver<TracingMsg>,
+        output: RoutineOutput<T>,
+    ) -> RoutineOutput<T> {
+        while let Ok(msg) = recv.try_recv() {
+            self.push_msg(msg).await?;
+        }
+
+        self.close(output).await
+    }
+
     pub fn build(self) -> (MsgLayer, MsgRoutine<T>) {
-        let builder = self;
-        let (send, recv) = unbounded_channel();
+        let mut builder = self;
+        let (send, mut recv) = unbounded_channel();
         let shutdown_trigger = CancellationToken::new();
         let shutdown_waiter = shutdown_trigger.clone();
         let routine = tokio::spawn(async move {
-            // todo
-            Ok(GracefulType::Explicit)
+            loop {
+                tokio::select! {
+                    res = ctrl_c(), if builder.ctrlc_shutdown => {
+                        return builder
+                            .flush_close(recv, res.map(|_| GraceType::CtrlC).map_err(From::from))
+                            .await;
+                    }
+                    _ = shutdown_waiter.cancelled() => {
+                        return builder.flush_close(recv, Ok(GraceType::Explicit)).await;
+                    }
+                    msg = recv.recv() => match msg {
+                        None => {
+                            return builder.close(Err(LayerError::LayerDropped)).await;
+                        }
+                        Some(msg) => builder.push_msg(msg).await?,
+                    }
+                };
+            }
         });
         let msg_layer = MsgLayer(send);
         let msg_routine = MsgRoutine {

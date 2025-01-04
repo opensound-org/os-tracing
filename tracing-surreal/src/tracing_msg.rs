@@ -3,7 +3,7 @@ use derive_more::Display;
 use est::{task::TaskId, thread::ThreadId};
 use indexmap::{map::Entry, IndexMap};
 use serde::{Deserialize, Serialize};
-use std::{future::Future, num::NonZeroU64, ops::Deref, thread};
+use std::{num::NonZeroU64, ops::Deref, thread};
 use tokio::task;
 
 pub(crate) mod handshake;
@@ -415,20 +415,76 @@ impl From<MsgBody> for TracingMsg {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum GracefulType {
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum GraceType {
     CtrlC,
     Explicit,
 }
 
-pub trait CloseTransport: Send + 'static {
-    fn close_transport(&self) -> impl Future<Output = ()> + Send {
-        async {}
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[non_exhaustive]
+pub enum CloseOk {
+    Grace(GraceType),
+    Other,
+}
+
+impl From<GraceType> for CloseOk {
+    fn from(value: GraceType) -> Self {
+        Self::Grace(value)
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[non_exhaustive]
+pub enum CloseErrKind {
+    Io,
+    LayerDropped,
+    PushMsgErr,
+    Other,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+pub struct CloseErr {
+    pub kind: CloseErrKind,
+    pub display: String,
+}
+
+impl CloseErr {
+    pub fn new(kind: CloseErrKind, display: impl std::fmt::Display) -> Self {
+        Self {
+            kind,
+            display: display.to_string(),
+        }
+    }
+
+    pub fn other(err: impl std::error::Error) -> Self {
+        Self {
+            kind: CloseErrKind::Other,
+            display: err.to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+pub struct CloseMsg(pub Result<CloseOk, CloseErr>);
+
+impl CloseMsg {
+    pub fn ok(value: CloseOk) -> Self {
+        Self(Ok(value))
+    }
+
+    pub fn err(err: CloseErr) -> Self {
+        Self(Err(err))
+    }
+}
+
+#[trait_variant::make(Send)]
+pub trait CloseTransport: 'static {
+    async fn close_transport(&mut self, msg: Option<CloseMsg>);
 }
 
 #[trait_variant::make(Send)]
 pub trait PushMsg: 'static {
     type Error: std::error::Error + Send + 'static;
-    async fn push_msg(&self, msg: TracingMsg) -> Result<(), Self::Error>;
+    async fn push_msg(&mut self, msg: TracingMsg) -> Result<(), Self::Error>;
 }

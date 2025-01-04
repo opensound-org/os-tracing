@@ -1,6 +1,6 @@
 use crate::{
     stop::Stop,
-    tracing_msg::{ClientRole, GracefulType},
+    tracing_msg::{ClientRole, GraceType},
 };
 use est::task::CloseAndWait;
 use std::{
@@ -224,12 +224,12 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                         println!("Bye from ctrl_c");
                         shutdown_waiter.cancel();
                         tracker.close_and_wait().await;
-                        return res.map(|_| GracefulType::CtrlC);
+                        return res.map(|_| GraceType::CtrlC);
                     }
                     _ = shutdown_waiter.cancelled() => {
                         println!("Bye from shutdown_waiter");
                         tracker.close_and_wait().await;
-                        return Ok(GracefulType::Explicit);
+                        return Ok(GraceType::Explicit);
                     }
                     res = listener.accept() => {
                         if let Err(err) = &res {
@@ -409,7 +409,7 @@ fn err_resp(text: &str, status: StatusCode) -> ErrorResponse {
     resp
 }
 
-type RoutineOutput = Result<GracefulType, io::Error>;
+type RoutineOutput = Result<GraceType, io::Error>;
 type HandleOutput = Result<RoutineOutput, JoinError>;
 
 #[derive(Debug)]
