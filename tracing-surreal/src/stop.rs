@@ -16,6 +16,8 @@ pub enum StopError {
     Surreal(#[from] surrealdb::Error),
     #[error("io error: `{0}`")]
     Io(#[from] io::Error),
+    #[error("observer cannot push")]
+    ObserverCannotPush,
 }
 
 #[derive(Clone, Debug)]
@@ -216,7 +218,6 @@ impl<C: Connection> Stop<C> {
     }
 
     pub async fn print(&self) {
-        println!("{}", self.can_push);
         println!("{}", self.can_observe);
     }
 }
@@ -263,5 +264,42 @@ impl<C: Connection> CloseTransport for Stop<C> {
                 .await
                 .ok();
         }
+    }
+}
+
+impl<C: Connection> PushMsg for Stop<C> {
+    type Error = StopError;
+
+    async fn push_msg(&mut self, msg: TracingMsg) -> Result<(), Self::Error> {
+        if !self.can_push {
+            return Err(StopError::ObserverCannotPush);
+        }
+
+        #[derive(Serialize)]
+        struct MsgRecord {
+            session_id: RecordId,
+            client_id: RecordId,
+            #[serde(flatten)]
+            msg: TracingMsg,
+        }
+
+        let timestamp = msg.timestamp;
+        let session_id = self.session_id.clone();
+        let client_id = self.client_id.clone();
+        let record = MsgRecord {
+            session_id,
+            client_id,
+            msg,
+        };
+        let _rid: Option<RID> = self
+            .db
+            .create((
+                format!("{}-msg", self.formatted_timestamp),
+                Ulid::from_datetime(timestamp.into()).to_string(),
+            ))
+            .content(record)
+            .await?;
+
+        Ok(())
     }
 }
