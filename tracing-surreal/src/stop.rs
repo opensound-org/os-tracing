@@ -1,4 +1,7 @@
-use crate::tracing_msg::{ClientRole, Handshake, MsgFormat, ProcEnv};
+use crate::tracing_msg::{
+    ClientRole, CloseErr, CloseErrKind, CloseMsg, CloseOk, CloseTransport, Handshake, MsgFormat,
+    ProcEnv, PushMsg, TracingMsg,
+};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -213,11 +216,52 @@ impl<C: Connection> Stop<C> {
     }
 
     pub async fn print(&self) {
-        println!("{}", self.db.version().await.unwrap());
-        println!("{}", self.session_id);
-        println!("{}", self.formatted_timestamp);
-        println!("{}", self.client_id);
         println!("{}", self.can_push);
         println!("{}", self.can_observe);
+    }
+}
+
+impl<C: Connection> CloseTransport for Stop<C> {
+    async fn close_transport(&mut self, msg: Option<CloseMsg>) {
+        if let Some(msg) = msg {
+            #[derive(Serialize)]
+            struct DisconnectRecord {
+                a_timestamp: DateTime<Local>,
+                b_session_id: RecordId,
+                c_client_id: RecordId,
+                d_normal: bool,
+                e_ok_kind: Option<CloseOk>,
+                f_err_kind: Option<CloseErrKind>,
+                g_err_msg: Option<String>,
+            }
+
+            let a_timestamp = Local::now();
+            let b_session_id = self.session_id.clone();
+            let c_client_id = self.client_id.clone();
+            let d_normal = msg.is_ok();
+            let e_ok_kind = msg.as_ref().ok().copied();
+            let (f_err_kind, g_err_msg) = match msg.as_ref().err() {
+                None => (None, None),
+                Some(CloseErr { kind, display }) => (Some(*kind), Some(display.clone())),
+            };
+            let record = DisconnectRecord {
+                a_timestamp,
+                b_session_id,
+                c_client_id,
+                d_normal,
+                e_ok_kind,
+                f_err_kind,
+                g_err_msg,
+            };
+            let _rid: Option<Option<RID>> = self
+                .db
+                .create((
+                    format!("{}-disconnects", self.formatted_timestamp),
+                    Ulid::from_datetime(a_timestamp.into()).to_string(),
+                ))
+                .content(record)
+                .await
+                .ok();
+        }
     }
 }
