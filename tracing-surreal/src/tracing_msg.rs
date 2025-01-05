@@ -57,6 +57,7 @@ impl From<tracing_core::Level> for Level {
 pub enum Parent {
     Root,
     Current,
+    #[serde(untagged)]
     Explicit(SpanId),
 }
 
@@ -226,6 +227,7 @@ impl From<&tracing_core::span::Record<'_>> for Payload {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum MsgBody {
     OnNewSpan {
         span_id: SpanId,
@@ -394,6 +396,7 @@ pub struct TracingMsg {
     pub thread_name: Option<String>,
     pub thread_id: ThreadId,
     pub task_id: Option<TaskId>,
+    #[serde(flatten)]
     pub body: MsgBody,
 }
 
@@ -416,12 +419,14 @@ impl From<MsgBody> for TracingMsg {
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[serde(rename_all = "snake_case")]
 pub enum GraceType {
     CtrlC,
     Explicit,
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[serde(tag = "type", content = "inner", rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum CloseOk {
     Grace(GraceType),
@@ -435,6 +440,7 @@ impl From<GraceType> for CloseOk {
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum CloseErrKind {
     Io,
@@ -466,7 +472,8 @@ impl CloseErr {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
-pub struct CloseMsg(pub Result<CloseOk, CloseErr>);
+#[serde(transparent)]
+pub struct CloseMsg(Result<CloseOk, CloseErr>);
 
 impl CloseMsg {
     pub fn ok(value: CloseOk) -> Self {
@@ -475,6 +482,14 @@ impl CloseMsg {
 
     pub fn err(err: CloseErr) -> Self {
         Self(Err(err))
+    }
+}
+
+impl Deref for CloseMsg {
+    type Target = Result<CloseOk, CloseErr>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
