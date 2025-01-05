@@ -4251,6 +4251,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.26.1",
  "tokio-util",
+ "tracing",
  "tracing-core",
  "tracing-subscriber",
  "trait-variant",
