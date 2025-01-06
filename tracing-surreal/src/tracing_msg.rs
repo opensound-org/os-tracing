@@ -3,7 +3,7 @@ use derive_more::Display;
 use est::{task::TaskId, thread::ThreadId};
 use indexmap::{map::Entry, IndexMap};
 use serde::{Deserialize, Serialize};
-use std::{num::NonZeroU64, ops::Deref, thread};
+use std::{future::Future, num::NonZeroU64, ops::Deref, thread};
 use tokio::task;
 
 pub(crate) mod handshake;
@@ -507,8 +507,18 @@ pub trait CloseTransport: 'static {
     async fn close_transport(&mut self, msg: Option<CloseMsg>);
 }
 
-#[trait_variant::make(Send)]
-pub trait PushMsg: 'static {
+pub trait PushMsg: Send + 'static {
     type Error: std::error::Error + Send + 'static;
-    async fn push_msg(&mut self, msg: TracingMsg) -> Result<(), Self::Error>;
+
+    fn bulk_push(
+        &mut self,
+        msgs: Vec<TracingMsg>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    fn push_msg(
+        &mut self,
+        msg: TracingMsg,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        self.bulk_push(vec![msg])
+    }
 }

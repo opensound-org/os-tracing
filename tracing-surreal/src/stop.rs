@@ -270,35 +270,40 @@ impl<C: Connection> CloseTransport for Stop<C> {
 impl<C: Connection> PushMsg for Stop<C> {
     type Error = StopError;
 
-    async fn push_msg(&mut self, msg: TracingMsg) -> Result<(), Self::Error> {
+    async fn bulk_push(&mut self, msgs: Vec<TracingMsg>) -> Result<(), Self::Error> {
         if !self.can_push {
             return Err(StopError::ObserverCannotPush);
         }
 
         #[derive(Serialize)]
         struct MsgRecord {
+            id: RecordId,
             session_id: RecordId,
             client_id: RecordId,
             #[serde(flatten)]
             msg: TracingMsg,
         }
 
-        let timestamp = msg.timestamp;
-        let session_id = self.session_id.clone();
-        let client_id = self.client_id.clone();
-        let record = MsgRecord {
-            session_id,
-            client_id,
-            msg,
-        };
-        let _rid: Option<RID> = self
-            .db
-            .create((
-                format!("{}-msg", self.formatted_timestamp),
-                Ulid::from_datetime(timestamp.into()).to_string(),
-            ))
-            .content(record)
-            .await?;
+        let table_name = format!("{}-msg", self.formatted_timestamp);
+        let mut records = Vec::new();
+
+        for msg in msgs {
+            let id = RecordId::from_table_key(
+                &table_name,
+                Ulid::from_datetime(msg.timestamp.into()).to_string(),
+            );
+            let session_id = self.session_id.clone();
+            let client_id = self.client_id.clone();
+
+            records.push(MsgRecord {
+                id,
+                session_id,
+                client_id,
+                msg,
+            });
+        }
+
+        let _rids: Vec<RID> = self.db.insert(table_name).content(records).await?;
 
         Ok(())
     }
