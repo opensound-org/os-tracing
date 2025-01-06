@@ -109,6 +109,15 @@ impl Value {
             _ => None,
         }
     }
+
+    fn nulls_removed(self) -> Self {
+        match self {
+            Self::Debug(value) => Self::Debug(value.replace('\0', "")),
+            Self::String(value) => Self::String(value.replace('\0', "")),
+            Self::Error(value) => Self::Error(value.replace('\0', "")),
+            _ => self,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
@@ -132,7 +141,7 @@ impl Payload {
     }
 
     fn record_field(&mut self, field: &tracing_core::Field, value: Value) {
-        self.record(field.name(), value);
+        self.record(field.name(), value.nulls_removed());
     }
 }
 
