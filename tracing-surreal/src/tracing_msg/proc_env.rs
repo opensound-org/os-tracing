@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr, IfIsHumanReadable};
-use std::{fmt, net::IpAddr, str::FromStr};
+use std::{fmt, net::IpAddr, process, str::FromStr};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, Networks, RefreshKind, System};
 use tokio::task::spawn_blocking;
 use wgpu::{Backend, Backends, Dx12Compiler, Instance, InstanceDescriptor, InstanceFlags};
@@ -262,7 +262,7 @@ pub struct ProcEnv {
 impl ProcEnv {
     // Need to gate this under `proc-env` & `sysinfo` & `wgpu` feature flag.
     pub fn create() -> Self {
-        let proc_id = std::process::id();
+        let proc_id = process::id();
         let proc_name = current_exe_name().ok();
         let host_name = System::host_name();
         let system = SystemEnv::create();

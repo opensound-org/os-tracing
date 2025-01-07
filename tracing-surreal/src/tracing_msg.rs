@@ -3,8 +3,9 @@ use derive_more::Display;
 use est::{task::TaskId, thread::ThreadId};
 use indexmap::{map::Entry, IndexMap};
 use serde::{Deserialize, Serialize};
-use std::{future::Future, num::NonZeroU64, ops::Deref, thread};
+use std::{error, fmt, future::Future, num::NonZeroU64, ops::Deref, thread};
 use tokio::task;
+use tracing_core::{field, span};
 
 pub(crate) mod handshake;
 pub mod layer;
@@ -18,14 +19,14 @@ pub use proc_env::ProcEnv;
 #[serde(transparent)]
 pub struct SpanId(pub NonZeroU64);
 
-impl From<tracing_core::span::Id> for SpanId {
-    fn from(value: tracing_core::span::Id) -> Self {
+impl From<span::Id> for SpanId {
+    fn from(value: span::Id) -> Self {
         Self(value.into_non_zero_u64())
     }
 }
 
-impl From<&tracing_core::span::Id> for SpanId {
-    fn from(value: &tracing_core::span::Id) -> Self {
+impl From<&span::Id> for SpanId {
+    fn from(value: &span::Id) -> Self {
         Self(value.into_non_zero_u64())
     }
 }
@@ -61,8 +62,8 @@ pub enum Parent {
     Explicit(SpanId),
 }
 
-impl From<&tracing_core::span::Attributes<'_>> for Parent {
-    fn from(attrs: &tracing_core::span::Attributes<'_>) -> Self {
+impl From<&span::Attributes<'_>> for Parent {
+    fn from(attrs: &span::Attributes<'_>) -> Self {
         if let Some(parent) = attrs.parent() {
             Self::Explicit(parent.into())
         } else if attrs.is_root() {
@@ -153,8 +154,8 @@ impl Deref for Payload {
     }
 }
 
-impl tracing_core::field::Visit for Payload {
-    fn record_debug(&mut self, field: &tracing_core::Field, value: &dyn std::fmt::Debug) {
+impl field::Visit for Payload {
+    fn record_debug(&mut self, field: &tracing_core::Field, value: &dyn fmt::Debug) {
         self.record_field(field, Value::Debug(format!("{:?}", value)));
     }
 
@@ -190,17 +191,13 @@ impl tracing_core::field::Visit for Payload {
         self.record_field(field, Value::Bytes(value.into()));
     }
 
-    fn record_error(
-        &mut self,
-        field: &tracing_core::Field,
-        value: &(dyn std::error::Error + 'static),
-    ) {
+    fn record_error(&mut self, field: &tracing_core::Field, value: &(dyn error::Error + 'static)) {
         self.record_field(field, Value::Error(value.to_string()));
     }
 }
 
-impl From<tracing_core::field::Iter> for Payload {
-    fn from(iter: tracing_core::field::Iter) -> Self {
+impl From<field::Iter> for Payload {
+    fn from(iter: field::Iter) -> Self {
         let mut payload = Self::default();
 
         for field in iter {
@@ -211,8 +208,8 @@ impl From<tracing_core::field::Iter> for Payload {
     }
 }
 
-impl From<&tracing_core::span::Attributes<'_>> for Payload {
-    fn from(attrs: &tracing_core::span::Attributes<'_>) -> Self {
+impl From<&span::Attributes<'_>> for Payload {
+    fn from(attrs: &span::Attributes<'_>) -> Self {
         let mut payload = attrs.fields().iter().into();
         attrs.record(&mut payload);
         payload
@@ -227,8 +224,8 @@ impl From<&tracing_core::Event<'_>> for Payload {
     }
 }
 
-impl From<&tracing_core::span::Record<'_>> for Payload {
-    fn from(record: &tracing_core::span::Record<'_>) -> Self {
+impl From<&span::Record<'_>> for Payload {
+    fn from(record: &span::Record<'_>) -> Self {
         let mut payload = Self::default();
         record.record(&mut payload);
         payload
@@ -284,10 +281,7 @@ pub enum MsgBody {
 }
 
 impl MsgBody {
-    pub fn on_new_span(
-        attrs: &tracing_core::span::Attributes<'_>,
-        id: &tracing_core::span::Id,
-    ) -> Self {
+    pub fn on_new_span(attrs: &span::Attributes<'_>, id: &span::Id) -> Self {
         let metadata = attrs.metadata();
         let parent = Parent::from(attrs);
         let payload = Payload::from(attrs);
@@ -296,20 +290,14 @@ impl MsgBody {
         (metadata, parent, payload, span_id).into()
     }
 
-    pub fn on_record(
-        span: &tracing_core::span::Id,
-        values: &tracing_core::span::Record<'_>,
-    ) -> Self {
+    pub fn on_record(span: &span::Id, values: &span::Record<'_>) -> Self {
         let span_id = span.into();
         let payload = values.into();
 
         Self::OnRecord { span_id, payload }
     }
 
-    pub fn on_follows_from(
-        span: &tracing_core::span::Id,
-        follows: &tracing_core::span::Id,
-    ) -> Self {
+    pub fn on_follows_from(span: &span::Id, follows: &span::Id) -> Self {
         let span_id = span.into();
         let follows = follows.into();
 
@@ -330,22 +318,22 @@ impl MsgBody {
         (metadata, parent, payload, message).into()
     }
 
-    pub fn on_enter(id: &tracing_core::span::Id) -> Self {
+    pub fn on_enter(id: &span::Id) -> Self {
         let span_id = id.into();
         Self::OnEnter { span_id }
     }
 
-    pub fn on_exit(id: &tracing_core::span::Id) -> Self {
+    pub fn on_exit(id: &span::Id) -> Self {
         let span_id = id.into();
         Self::OnExit { span_id }
     }
 
-    pub fn on_close(id: tracing_core::span::Id) -> Self {
+    pub fn on_close(id: span::Id) -> Self {
         let span_id = id.into();
         Self::OnClose { span_id }
     }
 
-    pub fn on_id_change(old: &tracing_core::span::Id, new: &tracing_core::span::Id) -> Self {
+    pub fn on_id_change(old: &span::Id, new: &span::Id) -> Self {
         let old_span = old.into();
         let new_span = new.into();
 
@@ -467,14 +455,14 @@ pub struct CloseErr {
 }
 
 impl CloseErr {
-    pub fn new(kind: CloseErrKind, display: impl std::fmt::Display) -> Self {
+    pub fn new(kind: CloseErrKind, display: impl fmt::Display) -> Self {
         Self {
             kind,
             display: display.to_string(),
         }
     }
 
-    pub fn other(err: impl std::error::Error) -> Self {
+    pub fn other(err: impl error::Error) -> Self {
         Self {
             kind: CloseErrKind::Other,
             display: err.to_string(),
@@ -510,7 +498,7 @@ pub trait CloseTransport: 'static {
 }
 
 pub trait PushMsg: Send + 'static {
-    type Error: std::error::Error + Send + 'static;
+    type Error: error::Error + Send + 'static;
 
     fn bulk_push(
         &mut self,
