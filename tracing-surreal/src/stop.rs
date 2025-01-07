@@ -275,6 +275,10 @@ impl<C: Connection> PushMsg for Stop<C> {
             return Err(StopError::ObserverCannotPush);
         }
 
+        if msgs.is_empty() {
+            return Ok(());
+        }
+
         #[derive(Serialize)]
         struct MsgRecord {
             id: RecordId,
