@@ -4,7 +4,9 @@ use serde_with::{serde_as, DisplayFromStr, IfIsHumanReadable};
 use std::{fmt, net::IpAddr, process, str::FromStr};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, Networks, RefreshKind, System};
 use tokio::task::spawn_blocking;
-use wgpu::{Backend, Backends, Dx12Compiler, Instance, InstanceDescriptor, InstanceFlags};
+use wgpu::{Backends, Dx12Compiler, Instance, InstanceDescriptor, InstanceFlags};
+
+pub use wgpu::Backend;
 
 // Need to gate this under `experimental` feature flag.
 #[doc(hidden)]
@@ -124,7 +126,7 @@ pub struct SystemEnv {
 }
 
 impl SystemEnv {
-    pub fn create() -> Self {
+    fn create() -> Self {
         Self {
             name: System::name(),
             kernel_version: System::kernel_version(),
@@ -146,7 +148,7 @@ pub struct CpuEnv {
 }
 
 impl CpuEnv {
-    pub fn create(sys: &System) -> Self {
+    fn create(sys: &System) -> Self {
         let cpus = sys.cpus();
         let cpu0 = &cpus[0];
 
@@ -168,7 +170,7 @@ pub struct MemoryEnv {
 }
 
 impl MemoryEnv {
-    pub fn create(sys: &System) -> Self {
+    fn create(sys: &System) -> Self {
         Self {
             total_memory: sys.total_memory(),
             used_memory: sys.used_memory(),
@@ -184,7 +186,7 @@ pub struct NetworkEnv {
 }
 
 impl NetworkEnv {
-    pub fn create_map() -> IndexMap<String, Self> {
+    fn create_map() -> IndexMap<String, Self> {
         let mut map: IndexMap<String, Self> = Networks::new_with_refreshed_list()
             .iter()
             .map(|(k, v)| {
@@ -217,7 +219,7 @@ pub struct GpuEnv {
 }
 
 impl GpuEnv {
-    pub fn create_list() -> Vec<Self> {
+    fn create_list() -> Vec<Self> {
         let adapters = Instance::new(InstanceDescriptor {
             backends: Backends::all(),
             flags: InstanceFlags::from_build_config(),

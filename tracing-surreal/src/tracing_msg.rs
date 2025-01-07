@@ -281,7 +281,7 @@ pub enum MsgBody {
 }
 
 impl MsgBody {
-    pub fn on_new_span(attrs: &span::Attributes<'_>, id: &span::Id) -> Self {
+    fn on_new_span(attrs: &span::Attributes<'_>, id: &span::Id) -> Self {
         let metadata = attrs.metadata();
         let parent = Parent::from(attrs);
         let payload = Payload::from(attrs);
@@ -290,21 +290,21 @@ impl MsgBody {
         (metadata, parent, payload, span_id).into()
     }
 
-    pub fn on_record(span: &span::Id, values: &span::Record<'_>) -> Self {
+    fn on_record(span: &span::Id, values: &span::Record<'_>) -> Self {
         let span_id = span.into();
         let payload = values.into();
 
         Self::OnRecord { span_id, payload }
     }
 
-    pub fn on_follows_from(span: &span::Id, follows: &span::Id) -> Self {
+    fn on_follows_from(span: &span::Id, follows: &span::Id) -> Self {
         let span_id = span.into();
         let follows = follows.into();
 
         Self::OnFollowsFrom { span_id, follows }
     }
 
-    pub fn on_event(event: &tracing_core::Event<'_>) -> Self {
+    fn on_event(event: &tracing_core::Event<'_>) -> Self {
         let metadata = event.metadata();
         let parent = Parent::from(event);
         let payload = Payload::from(event);
@@ -318,22 +318,22 @@ impl MsgBody {
         (metadata, parent, payload, message).into()
     }
 
-    pub fn on_enter(id: &span::Id) -> Self {
+    fn on_enter(id: &span::Id) -> Self {
         let span_id = id.into();
         Self::OnEnter { span_id }
     }
 
-    pub fn on_exit(id: &span::Id) -> Self {
+    fn on_exit(id: &span::Id) -> Self {
         let span_id = id.into();
         Self::OnExit { span_id }
     }
 
-    pub fn on_close(id: span::Id) -> Self {
+    fn on_close(id: span::Id) -> Self {
         let span_id = id.into();
         Self::OnClose { span_id }
     }
 
-    pub fn on_id_change(old: &span::Id, new: &span::Id) -> Self {
+    fn on_id_change(old: &span::Id, new: &span::Id) -> Self {
         let old_span = old.into();
         let new_span = new.into();
 
