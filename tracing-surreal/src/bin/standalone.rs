@@ -7,9 +7,7 @@ use surrealdb::{
 };
 use tokio::time::interval;
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::{
-    filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt, Layer,
-};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_surreal::{stop::Stop, tracing_msg::TracingLayerDefault};
 
 async fn db() -> AnyRes<Surreal<Client>> {
@@ -31,9 +29,7 @@ async fn main() -> AnyRes {
         .tracing_layer_default()
         .close_transport_on_shutdown()
         .build();
-    tracing_subscriber::registry()
-        .with(layer.with_filter(LevelFilter::INFO))
-        .init();
+    tracing_subscriber::registry().with(layer).init();
     let shutdown_trigger = CancellationToken::new();
     let shutdown_waiter = shutdown_trigger.clone();
     let mut routine_trace = tokio::spawn(async move {

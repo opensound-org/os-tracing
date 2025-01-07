@@ -19,7 +19,9 @@ use tracing_core::{
     span::{self, Attributes, Record},
     Event, Subscriber,
 };
-use tracing_subscriber::{layer::Context, Layer};
+use tracing_subscriber::{filter::Filtered, layer::Context, Layer};
+
+pub use tracing_subscriber::filter::LevelFilter;
 
 #[derive(Clone, Debug)]
 pub struct MsgLayer(UnboundedSender<TracingMsg>);
@@ -125,15 +127,32 @@ impl<T: PushMsg> Future for MsgRoutine<T> {
     }
 }
 
+pub type FilteredLayer<S> = Filtered<MsgLayer, LevelFilter, S>;
+
 #[derive(Clone, Debug)]
 pub struct MsgLayerBuiler<T: CloseTransport + PushMsg + Clone + Debug> {
     transport: T,
+    level_filter: LevelFilter,
     ctrlc_shutdown: bool,
     close_on_shutdown: bool,
     abort_on_error: bool,
 }
 
 impl<T: CloseTransport + PushMsg + Clone + Debug> MsgLayerBuiler<T> {
+    pub fn set_level_filter(self, level_filter: LevelFilter) -> Self {
+        Self {
+            level_filter,
+            ..self
+        }
+    }
+
+    pub fn disable_level_filter(self) -> Self {
+        Self {
+            level_filter: LevelFilter::TRACE,
+            ..self
+        }
+    }
+
     pub fn disable_ctrlc_shutdown(self) -> Self {
         Self {
             ctrlc_shutdown: false,
@@ -201,7 +220,8 @@ impl<T: CloseTransport + PushMsg + Clone + Debug> MsgLayerBuiler<T> {
         self.close(output).await
     }
 
-    pub fn build(self) -> (MsgLayer, MsgRoutine<T>) {
+    pub fn build<S: Subscriber>(self) -> (FilteredLayer<S>, MsgRoutine<T>) {
+        let level_filter = self.level_filter;
         let mut builder = self;
         let (send, mut recv) = unbounded_channel();
         let shutdown_trigger = CancellationToken::new();
@@ -226,13 +246,13 @@ impl<T: CloseTransport + PushMsg + Clone + Debug> MsgLayerBuiler<T> {
                 };
             }
         });
-        let msg_layer = MsgLayer(send);
+        let filtered_layer = MsgLayer(send).with_filter(level_filter);
         let msg_routine = MsgRoutine {
             shutdown_trigger,
             routine,
         };
 
-        (msg_layer, msg_routine)
+        (filtered_layer, msg_routine)
     }
 }
 
@@ -250,6 +270,7 @@ where
     fn tracing_layer_default(&self) -> MsgLayerBuiler<Self::Transport> {
         MsgLayerBuiler {
             transport: self.clone(),
+            level_filter: LevelFilter::DEBUG,
             ctrlc_shutdown: true,
             close_on_shutdown: false,
             abort_on_error: true,
