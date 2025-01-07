@@ -455,6 +455,8 @@ pub enum CloseErrKind {
     Io,
     LayerDropped,
     PushMsgErr,
+    BulkPushErr,
+    BufferFull,
     Other,
 }
 

@@ -98,6 +98,10 @@ pub enum LayerError<T: PushMsg> {
     LayerDropped,
     #[error("push_msg error: `{0}`")]
     PushMsgErr(T::Error),
+    #[error("bulk_push error: `{0}`")]
+    BulkPushErr(T::Error),
+    #[error("msg buffer full")]
+    BufferFull,
 }
 
 impl<T: PushMsg> From<&LayerError<T>> for CloseErr {
@@ -106,6 +110,8 @@ impl<T: PushMsg> From<&LayerError<T>> for CloseErr {
             LayerError::Io(_) => CloseErrKind::Io,
             LayerError::LayerDropped => CloseErrKind::LayerDropped,
             LayerError::PushMsgErr(_) => CloseErrKind::PushMsgErr,
+            LayerError::BulkPushErr(_) => CloseErrKind::BulkPushErr,
+            LayerError::BufferFull => CloseErrKind::BufferFull,
         };
 
         Self::new(kind, err)
@@ -200,10 +206,26 @@ impl<T: CloseTransport + PushMsg + Clone + Debug> MsgLayerBuiler<T> {
     async fn flush_close(
         mut self,
         mut recv: UnboundedReceiver<TracingMsg>,
-        output: RoutineOutput<T>,
+        mut output: RoutineOutput<T>,
     ) -> RoutineOutput<T> {
+        recv.close();
+        let mut msgs = Vec::new();
+
         while let Ok(msg) = recv.try_recv() {
-            self.push_msg(msg).await?;
+            msgs.push(msg);
+        }
+
+        let mut chunks = msgs.chunks(1024);
+
+        if let Some(chunk) = chunks.next() {
+            match self.transport.bulk_push(chunk.into()).await {
+                Err(err) => output = Err(LayerError::BulkPushErr(err)),
+                _ => {
+                    if chunks.next().is_some() {
+                        output = Err(LayerError::BufferFull);
+                    }
+                }
+            }
         }
 
         self.close(output).await
