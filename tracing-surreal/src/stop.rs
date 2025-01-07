@@ -10,6 +10,9 @@ use surrealdb::{Connection, RecordId, Surreal};
 use thiserror::Error;
 use ulid::Ulid;
 
+pub use crate::tracing_msg;
+pub use surrealdb;
+
 #[derive(Error, Debug)]
 pub enum StopError {
     #[error("surrealdb error: `{0}`")]
