@@ -5,10 +5,11 @@ use crate::tracing_msg::{
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, io, net::SocketAddr};
+use std::{collections::HashMap, fmt, io, net::SocketAddr, sync::Arc};
 use surrealdb::{Connection, RecordId, Surreal};
 use thiserror::Error;
-use ulid::Ulid;
+use tokio::sync::RwLock;
+use ulid::Generator;
 
 pub use crate::tracing_msg;
 pub use surrealdb;
@@ -23,9 +24,34 @@ pub enum StopError {
     ObserverCannotPush,
 }
 
+#[derive(Clone, Default)]
+struct IdGen(Arc<RwLock<Generator>>);
+
+impl IdGen {
+    async fn next(&self, timestamp: DateTime<Local>) -> String {
+        let datetime = timestamp.into();
+        let mut gen = self.0.write().await;
+
+        loop {
+            if let Ok(ulid) = gen.generate_from_datetime(datetime) {
+                return ulid.to_string();
+            }
+
+            *gen = Default::default();
+        }
+    }
+}
+
+impl fmt::Debug for IdGen {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("IdGen").field(&"Generator").finish()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Stop<C: Connection> {
     db: Surreal<C>,
+    id_gen: IdGen,
     session_id: RecordId,
     formatted_timestamp: String,
     client_id: RecordId,
@@ -88,6 +114,7 @@ impl<C: Connection> Stop<C> {
             g_session_token: Option<Value>,
         }
 
+        let id_gen = IdGen::default();
         let a_timestamp = Local::now();
         let b_access_method = db.run("session::ac").await?;
         let c_record_auth = db.run("session::rd").await?;
@@ -105,10 +132,7 @@ impl<C: Connection> Stop<C> {
             g_session_token,
         };
         let rid: Option<RID> = db
-            .create((
-                ".sessions",
-                Ulid::from_datetime(a_timestamp.into()).to_string(),
-            ))
+            .create((".sessions", id_gen.next(a_timestamp).await))
             .content(record)
             .await?;
         let session_id = rid.unwrap().id;
@@ -122,6 +146,7 @@ impl<C: Connection> Stop<C> {
 
         Ok(Self::handshake_internal(
             &db,
+            &id_gen,
             &session_id,
             &formatted_timestamp,
             client_name,
@@ -143,6 +168,7 @@ impl<C: Connection> Stop<C> {
     ) -> surrealdb::Result<Self> {
         Self::handshake_internal(
             &self.db,
+            &self.id_gen,
             &self.session_id,
             &self.formatted_timestamp,
             &client_info.client_name,
@@ -157,6 +183,7 @@ impl<C: Connection> Stop<C> {
 
     async fn handshake_internal(
         db: &Surreal<C>,
+        id_gen: &IdGen,
         session_id: &RecordId,
         formatted_timestamp: &str,
         client_name: &str,
@@ -199,11 +226,12 @@ impl<C: Connection> Stop<C> {
         let rid: Option<RID> = db
             .create((
                 format!("{}-clients", formatted_timestamp),
-                Ulid::from_datetime(a_timestamp.into()).to_string(),
+                id_gen.next(a_timestamp).await,
             ))
             .content(record)
             .await?;
         let db = db.clone();
+        let id_gen = id_gen.clone();
         let session_id = session_id.clone();
         let formatted_timestamp = formatted_timestamp.into();
         let client_id = rid.unwrap().id;
@@ -212,6 +240,7 @@ impl<C: Connection> Stop<C> {
 
         Ok(Self {
             db,
+            id_gen,
             session_id,
             formatted_timestamp,
             client_id,
@@ -261,7 +290,7 @@ impl<C: Connection> CloseTransport for Stop<C> {
                 .db
                 .create((
                     format!("{}-disconnects", self.formatted_timestamp),
-                    Ulid::from_datetime(a_timestamp.into()).to_string(),
+                    self.id_gen.next(a_timestamp).await,
                 ))
                 .content(record)
                 .await
@@ -295,10 +324,7 @@ impl<C: Connection> PushMsg for Stop<C> {
         let mut records = Vec::new();
 
         for msg in msgs {
-            let id = RecordId::from_table_key(
-                &table_name,
-                Ulid::from_datetime(msg.timestamp.into()).to_string(),
-            );
+            let id = RecordId::from_table_key(&table_name, self.id_gen.next(msg.timestamp).await);
             let session_id = self.session_id.clone();
             let client_id = self.client_id.clone();
 
