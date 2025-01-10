@@ -24,7 +24,7 @@ async fn db() -> AnyRes<Surreal<Client>> {
 
 #[tokio::main]
 async fn main() -> AnyRes {
-    let (layer, mut routine_msg) = Stop::init(db().await?, "test")
+    let (layer, mut routine_msg) = Stop::init(db().await?, "test", None)
         .await?
         .tracing_layer_default()
         .close_transport_on_shutdown()

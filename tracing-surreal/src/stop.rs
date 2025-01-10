@@ -100,7 +100,7 @@ impl From<ClientRole> for Role {
 }
 
 impl<C: Connection> Stop<C> {
-    pub async fn init(db: Surreal<C>, app: &str) -> Result<Self, StopError> {
+    pub async fn init(db: Surreal<C>, app: &str, client: Option<&str>) -> Result<Self, StopError> {
         db.use_db(format!("app-tracing-{}", app)).await?;
 
         #[derive(Serialize)]
@@ -137,7 +137,7 @@ impl<C: Connection> Stop<C> {
             .await?;
         let session_id = rid.unwrap().id;
         let formatted_timestamp = a_timestamp.format("%y%m%d-%H%M%S").to_string();
-        let client_name = app;
+        let client_name = client.unwrap_or("host");
         let client_role = Role::Host;
         let msg_format = None;
         let client_addr = None;
