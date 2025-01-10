@@ -23,10 +23,14 @@ async fn db() -> AnyRes<Surreal<Client>> {
 #[tokio::main]
 async fn main() -> AnyRes {
     let stop = Stop::init(db().await?, "test").await?;
-    let mut server = stop.build_server_default().start().await?;
+    let mut server = stop
+        .build_server_default()
+        .pusher_token("fucker")
+        .start()
+        .await?;
     println!("{}", server.get_local_addr());
 
-    let grace_type = match timeout(Duration::from_secs_f64(5.0), &mut server).await {
+    let grace_type = match timeout(Duration::from_secs_f64(30.0), &mut server).await {
         Err(_) => {
             println!("5s elapsed, initiating shutdown...");
             server.graceful_shutdown().await??
