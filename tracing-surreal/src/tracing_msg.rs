@@ -416,6 +416,41 @@ impl From<MsgBody> for TracingMsg {
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Host,
+    Pusher,
+    Observer,
+    Director,
+}
+
+impl Role {
+    pub fn can_push(&self) -> bool {
+        match self {
+            Self::Observer => false,
+            _ => true,
+        }
+    }
+
+    pub fn can_observe(&self) -> bool {
+        match self {
+            Self::Pusher => false,
+            _ => true,
+        }
+    }
+}
+
+impl From<ClientRole> for Role {
+    fn from(value: ClientRole) -> Self {
+        match value {
+            ClientRole::Pusher => Self::Pusher,
+            ClientRole::Observer => Self::Observer,
+            ClientRole::Director => Self::Director,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum GraceType {
     CtrlC,

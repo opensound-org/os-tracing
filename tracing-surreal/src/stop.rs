@@ -1,6 +1,6 @@
 use crate::tracing_msg::{
     ClientRole, CloseErr, CloseErrKind, CloseMsg, CloseOk, CloseTransport, Handshake, MsgFormat,
-    ProcEnv, PushMsg, TracingMsg,
+    ProcEnv, PushMsg, Role, TracingMsg,
 };
 use chrono::{DateTime, Local};
 use indexmap::IndexMap;
@@ -63,41 +63,6 @@ pub struct Stop<C: Connection> {
 #[derive(Deserialize)]
 struct RID {
     id: RecordId,
-}
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[serde(rename_all = "lowercase")]
-enum Role {
-    Host,
-    Pusher,
-    Observer,
-    Director,
-}
-
-impl Role {
-    fn can_push(&self) -> bool {
-        match self {
-            Self::Observer => false,
-            _ => true,
-        }
-    }
-
-    fn can_observe(&self) -> bool {
-        match self {
-            Self::Pusher => false,
-            _ => true,
-        }
-    }
-}
-
-impl From<ClientRole> for Role {
-    fn from(value: ClientRole) -> Self {
-        match value {
-            ClientRole::Pusher => Self::Pusher,
-            ClientRole::Observer => Self::Observer,
-            ClientRole::Director => Self::Director,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
