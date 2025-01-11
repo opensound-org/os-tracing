@@ -23,3 +23,11 @@ pub struct MsgInfo {
     pub client_info: ClientInfo,
     pub tracing_msg: TracingMsg,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObserveMsg {
+    OnClientHandshake(ClientInfo),
+    OnDisconnect(CloseInfo),
+    OnMsg(MsgInfo),
+}
