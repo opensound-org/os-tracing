@@ -1,7 +1,10 @@
 use super::{CloseMsg, Handshake, Role, TracingMsg};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use std::{mem, net::SocketAddr};
+use tokio::sync::broadcast::Receiver;
+
+pub use tokio::sync::broadcast::error::RecvError;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct ClientInfo {
@@ -30,4 +33,24 @@ pub enum ObserveMsg {
     OnClientHandshake(ClientInfo),
     OnDisconnect(CloseInfo),
     OnMsg(MsgInfo),
+}
+
+#[derive(Debug)]
+pub struct Observer {
+    history: Vec<ObserveMsg>,
+    live: Receiver<ObserveMsg>,
+}
+
+impl Observer {
+    pub fn history(&mut self) -> Vec<ObserveMsg> {
+        mem::take(&mut self.history)
+    }
+
+    pub async fn next_live(&mut self) -> Result<ObserveMsg, RecvError> {
+        self.live.recv().await
+    }
+}
+
+pub fn observer(history: Vec<ObserveMsg>, live: Receiver<ObserveMsg>) -> Observer {
+    Observer { history, live }
 }
