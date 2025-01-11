@@ -14,6 +14,7 @@ pub mod proc_env;
 
 pub use handshake::{ClientRole, Handshake, MsgFormat};
 pub use layer::TracingLayerDefault;
+pub use observe::observer;
 pub use proc_env::ProcEnv;
 
 #[derive(Debug, Display, Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
