@@ -1,5 +1,6 @@
 #![cfg_attr(nightly, feature(doc_auto_cfg))]
 
+pub mod async_req_res;
 pub mod stop;
 pub mod tmp;
 pub mod tracing_msg;
