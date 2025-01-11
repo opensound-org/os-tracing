@@ -3,9 +3,10 @@ use crate::tracing_msg::{
     ProcEnv, PushMsg, TracingMsg,
 };
 use chrono::{DateTime, Local};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, fmt, io, net::SocketAddr, sync::Arc};
+use std::{fmt, io, net::SocketAddr, sync::Arc};
 use surrealdb::{Connection, RecordId, Surreal};
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -190,7 +191,7 @@ impl<C: Connection> Stop<C> {
         client_info: Handshake,
         client_role: ClientRole,
         client_addr: SocketAddr,
-        query_map: Option<HashMap<String, String>>,
+        query_map: Option<IndexMap<String, String>>,
     ) -> surrealdb::Result<Self> {
         Self::handshake_internal(
             &self.db,
@@ -216,7 +217,7 @@ impl<C: Connection> Stop<C> {
         client_role: Role,
         msg_format: Option<MsgFormat>,
         client_addr: Option<SocketAddr>,
-        query_map: &Option<HashMap<String, String>>,
+        query_map: &Option<IndexMap<String, String>>,
         proc_env: &Option<ProcEnv>,
     ) -> surrealdb::Result<Self> {
         #[derive(Serialize)]
@@ -227,7 +228,7 @@ impl<C: Connection> Stop<C> {
             d_client_role: Role,
             e_msg_format: Option<MsgFormat>,
             f_client_addr: Option<SocketAddr>,
-            g_query_map: Option<HashMap<String, String>>,
+            g_query_map: Option<IndexMap<String, String>>,
             h_proc_env: Option<Value>,
         }
 

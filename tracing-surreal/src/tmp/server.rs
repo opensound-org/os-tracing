@@ -3,8 +3,8 @@ use crate::{
     tracing_msg::{ClientRole, GraceType},
 };
 use est::task::CloseAndWait;
+use indexmap::IndexMap;
 use std::{
-    collections::HashMap,
     future::Future,
     io,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
@@ -257,7 +257,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                         res = accept_hdr_async(stream, move |req: &Request, resp| {
                             let uri = req.uri();
                             let path = uri.path();
-                            let query: Option<Result<HashMap<String, String>, serde_qs::Error>> =
+                            let query: Option<Result<IndexMap<String, String>, serde_qs::Error>> =
                                 uri.query().map(serde_qs::from_str);
 
                             println!("path: {}", path);
@@ -359,7 +359,7 @@ impl<C: Connection + Clone> BuildServerDefault<C> for Stop<C> {
 }
 
 fn token_auth(
-    query: Option<Result<HashMap<String, String>, serde_qs::Error>>,
+    query: Option<Result<IndexMap<String, String>, serde_qs::Error>>,
     token_need: Option<String>,
     role_send: oneshot::Sender<ClientRole>,
     role: ClientRole,
