@@ -9,6 +9,7 @@ use tracing_core::{field, span};
 
 pub(crate) mod handshake;
 pub mod layer;
+pub mod observe;
 pub mod proc_env;
 
 pub use handshake::{ClientRole, Handshake, MsgFormat};
