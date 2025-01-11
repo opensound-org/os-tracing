@@ -99,9 +99,25 @@ impl From<ClientRole> for Role {
     }
 }
 
-impl<C: Connection> Stop<C> {
-    pub async fn init(db: Surreal<C>, app: &str, client: Option<&str>) -> Result<Self, StopError> {
-        db.use_db(format!("app-tracing-{}", app)).await?;
+#[derive(Clone, Debug)]
+pub struct StopBuilder<C: Connection> {
+    db: Surreal<C>,
+    app: String,
+    host: String,
+}
+
+impl<C: Connection> StopBuilder<C> {
+    pub fn host_name(self, host: &str) -> Self {
+        Self {
+            host: host.into(),
+            ..self
+        }
+    }
+
+    pub async fn init(self) -> Result<Stop<C>, StopError> {
+        let db = self.db;
+
+        db.use_db(format!("app-tracing-{}", self.app)).await?;
 
         #[derive(Serialize)]
         struct SessionRecord {
@@ -137,19 +153,19 @@ impl<C: Connection> Stop<C> {
             .await?;
         let session_id = rid.unwrap().id;
         let formatted_timestamp = a_timestamp.format("%y%m%d-%H%M%S").to_string();
-        let client_name = client.unwrap_or("host");
+        let client_name = self.host;
         let client_role = Role::Host;
         let msg_format = None;
         let client_addr = None;
         let query_map = None;
         let proc_env = ProcEnv::create_async().await;
 
-        Ok(Self::handshake_internal(
+        Ok(Stop::handshake_internal(
             &db,
             &id_gen,
             &session_id,
             &formatted_timestamp,
-            client_name,
+            &client_name,
             client_role,
             msg_format,
             client_addr,
@@ -157,6 +173,16 @@ impl<C: Connection> Stop<C> {
             &proc_env,
         )
         .await?)
+    }
+}
+
+impl<C: Connection> Stop<C> {
+    pub fn builder_default(db: Surreal<C>, app: &str) -> StopBuilder<C> {
+        StopBuilder {
+            db,
+            app: app.into(),
+            host: "host".into(),
+        }
     }
 
     pub async fn client_handshake(

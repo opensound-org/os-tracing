@@ -22,7 +22,7 @@ async fn db() -> AnyRes<Surreal<Client>> {
 
 #[tokio::main]
 async fn main() -> AnyRes {
-    let stop = Stop::init(db().await?, "test", None).await?;
+    let stop = Stop::builder_default(db().await?, "test").init().await?;
     let mut server = stop
         .build_server_default()
         .pusher_token("fucker")
