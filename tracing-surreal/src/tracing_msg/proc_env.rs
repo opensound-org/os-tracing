@@ -84,7 +84,7 @@ impl From<IpNetwork> for sysinfo::IpNetwork {
 
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub enum DeviceType {
+pub enum GpuDeviceType {
     Other,
     IntegratedGpu,
     DiscreteGpu,
@@ -92,7 +92,7 @@ pub enum DeviceType {
     Cpu,
 }
 
-impl From<wgpu::DeviceType> for DeviceType {
+impl From<wgpu::DeviceType> for GpuDeviceType {
     fn from(device_type: wgpu::DeviceType) -> Self {
         match device_type {
             wgpu::DeviceType::Other => Self::Other,
@@ -104,14 +104,14 @@ impl From<wgpu::DeviceType> for DeviceType {
     }
 }
 
-impl From<DeviceType> for wgpu::DeviceType {
-    fn from(device_type: DeviceType) -> Self {
+impl From<GpuDeviceType> for wgpu::DeviceType {
+    fn from(device_type: GpuDeviceType) -> Self {
         match device_type {
-            DeviceType::Other => Self::Other,
-            DeviceType::IntegratedGpu => Self::IntegratedGpu,
-            DeviceType::DiscreteGpu => Self::DiscreteGpu,
-            DeviceType::VirtualGpu => Self::VirtualGpu,
-            DeviceType::Cpu => Self::Cpu,
+            GpuDeviceType::Other => Self::Other,
+            GpuDeviceType::IntegratedGpu => Self::IntegratedGpu,
+            GpuDeviceType::DiscreteGpu => Self::DiscreteGpu,
+            GpuDeviceType::VirtualGpu => Self::VirtualGpu,
+            GpuDeviceType::Cpu => Self::Cpu,
         }
     }
 }
@@ -212,7 +212,7 @@ pub struct GpuEnv {
     pub name: String,
     pub vendor_id: u32,
     pub device_id: u32,
-    pub device_type: DeviceType,
+    pub device_type: GpuDeviceType,
     pub driver: String,
     pub driver_info: String,
     pub backend: Backend,
