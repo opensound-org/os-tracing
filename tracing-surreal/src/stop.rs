@@ -248,8 +248,6 @@ impl<C: Connection> Stop<C> {
             n: u8,
         }
 
-        // ..=01JH8CBYAKFSRK8Y9HY02QVTDS
-        // ..={last_id}
         let table_name = format!("{}-msg", self.formatted_timestamp);
 
         #[derive(Deserialize)]
@@ -257,6 +255,7 @@ impl<C: Connection> Stop<C> {
             message: String,
         }
 
+        // last_id: 01JH8CBYAKFSRK8Y9HY02QVTDS
         // SELECT * FROM (SELECT *, session_id[*], client_id[*] FROM type::thing($table_name, ..=$last_id) ORDER BY id DESC LIMIT $n) ORDER BY id
         let query = "SELECT * FROM (SELECT * FROM type::thing($table_name, ..) ORDER BY id DESC LIMIT $n) ORDER BY id";
         let msgs: Vec<Msg> = self
