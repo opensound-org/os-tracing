@@ -256,7 +256,7 @@ impl<C: Connection> Stop<C> {
         }
 
         // last_id: 01JH8CBYAKFSRK8Y9HY02QVTDS
-        // SELECT * FROM (SELECT *, session_id[*], client_id[*] FROM type::thing($table_name, ..=$last_id) ORDER BY id DESC LIMIT $n) ORDER BY id
+        // SELECT * FROM (SELECT *, client_id[*] FROM type::thing($table_name, ..=$last_id) ORDER BY id DESC LIMIT $n) ORDER BY id
         let query = "SELECT * FROM (SELECT * FROM type::thing($table_name, ..) ORDER BY id DESC LIMIT $n) ORDER BY id";
         let msgs: Vec<Msg> = self
             .db
