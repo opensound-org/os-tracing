@@ -244,25 +244,25 @@ impl<C: Connection> Stop<C> {
     pub async fn query_last_n(&self, n: u8) -> Result<Vec<String>, surrealdb::Error> {
         #[derive(Serialize)]
         struct Bind {
-            record_id_range: String,
+            table_name: String,
             n: u8,
         }
 
         // ..=01JH8CBYAKFSRK8Y9HY02QVTDS
         // ..={last_id}
-        let record_id_range = format!("⟨{}-msg⟩:..", self.formatted_timestamp);
+        let table_name = format!("{}-msg", self.formatted_timestamp);
 
         #[derive(Deserialize)]
         struct Msg {
             message: String,
         }
 
-        // SELECT * FROM (SELECT *, session_id[*], client_id[*] FROM type::record($record_id_range) ORDER BY id DESC LIMIT $n) ORDER BY id
-        let query = "SELECT * FROM (SELECT * FROM type::record($record_id_range) ORDER BY id DESC LIMIT $n) ORDER BY id";
+        // SELECT * FROM (SELECT *, session_id[*], client_id[*] FROM type::thing($table_name, ..=$last_id) ORDER BY id DESC LIMIT $n) ORDER BY id
+        let query = "SELECT * FROM (SELECT * FROM type::thing($table_name, ..) ORDER BY id DESC LIMIT $n) ORDER BY id";
         let msgs: Vec<Msg> = self
             .db
             .query(query)
-            .bind(Bind { record_id_range, n })
+            .bind(Bind { table_name, n })
             .await?
             .take(0)?;
 
