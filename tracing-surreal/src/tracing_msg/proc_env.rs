@@ -6,8 +6,6 @@ use sysinfo::{CpuRefreshKind, MemoryRefreshKind, Networks, RefreshKind, System};
 use tokio::task::spawn_blocking;
 use wgpu::{Backends, Dx12Compiler, Instance, InstanceDescriptor, InstanceFlags};
 
-pub use wgpu::Backend;
-
 // Need to gate this under `experimental` feature flag.
 #[doc(hidden)]
 pub fn current_exe_name() -> std::io::Result<String> {
@@ -116,6 +114,43 @@ impl From<GpuDeviceType> for wgpu::DeviceType {
     }
 }
 
+#[repr(u8)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum GpuBackend {
+    Empty = 0,
+    Vulkan = 1,
+    Metal = 2,
+    Dx12 = 3,
+    Gl = 4,
+    BrowserWebGpu = 5,
+}
+
+impl From<wgpu::Backend> for GpuBackend {
+    fn from(backend: wgpu::Backend) -> Self {
+        match backend {
+            wgpu::Backend::Empty => Self::Empty,
+            wgpu::Backend::Vulkan => Self::Vulkan,
+            wgpu::Backend::Metal => Self::Metal,
+            wgpu::Backend::Dx12 => Self::Dx12,
+            wgpu::Backend::Gl => Self::Gl,
+            wgpu::Backend::BrowserWebGpu => Self::BrowserWebGpu,
+        }
+    }
+}
+
+impl From<GpuBackend> for wgpu::Backend {
+    fn from(backend: GpuBackend) -> Self {
+        match backend {
+            GpuBackend::Empty => Self::Empty,
+            GpuBackend::Vulkan => Self::Vulkan,
+            GpuBackend::Metal => Self::Metal,
+            GpuBackend::Dx12 => Self::Dx12,
+            GpuBackend::Gl => Self::Gl,
+            GpuBackend::BrowserWebGpu => Self::BrowserWebGpu,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct SystemEnv {
     pub name: Option<String>,
@@ -215,7 +250,7 @@ pub struct GpuEnv {
     pub device_type: GpuDeviceType,
     pub driver: String,
     pub driver_info: String,
-    pub backend: Backend,
+    pub backend: GpuBackend,
 }
 
 impl GpuEnv {
@@ -242,7 +277,7 @@ impl GpuEnv {
                     device_type: info.device_type.into(),
                     driver: info.driver,
                     driver_info: info.driver_info,
-                    backend: info.backend,
+                    backend: info.backend.into(),
                 }
             })
             .collect()
