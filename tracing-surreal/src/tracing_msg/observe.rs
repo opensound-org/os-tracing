@@ -6,6 +6,21 @@ use tokio::sync::broadcast::Receiver;
 
 pub use tokio::sync::broadcast::error::RecvError;
 
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+pub struct ClientId(String, String);
+
+impl From<surrealdb::RecordId> for ClientId {
+    fn from(value: surrealdb::RecordId) -> Self {
+        Self(value.table().into(), value.key().to_string())
+    }
+}
+
+impl From<ClientId> for surrealdb::RecordId {
+    fn from(value: ClientId) -> Self {
+        (value.0, value.1).into()
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct ClientInfo {
     pub handshake_timestamp: DateTime<Local>,
