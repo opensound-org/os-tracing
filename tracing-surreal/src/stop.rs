@@ -120,7 +120,7 @@ impl<C: Connection> StopBuilder<C> {
         let session_id = rid.unwrap().id;
         let formatted_timestamp = a_timestamp.format("%y%m%d-%H%M%S").to_string();
         let client_name = self.host;
-        let client_role = Role::Host;
+        let client_role = Role::host();
         let msg_format = None;
         let client_addr = None;
         let query_map = None;

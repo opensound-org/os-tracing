@@ -421,22 +421,39 @@ impl From<MsgBody> for TracingMsg {
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Host,
-    Pusher,
-    Observer,
-    Director,
+    #[serde(untagged)]
+    Client(ClientRole),
 }
 
 impl Role {
+    pub const fn host() -> Self {
+        Self::Host
+    }
+
+    pub const fn pusher() -> Self {
+        Self::Client(ClientRole::Pusher)
+    }
+
+    pub const fn observer() -> Self {
+        Self::Client(ClientRole::Observer)
+    }
+
+    pub const fn director() -> Self {
+        Self::Client(ClientRole::Director)
+    }
+
     pub fn can_push(&self) -> bool {
-        match self {
-            Self::Observer => false,
+        const OB: Role = Role::observer();
+        match *self {
+            OB => false,
             _ => true,
         }
     }
 
     pub fn can_observe(&self) -> bool {
-        match self {
-            Self::Pusher => false,
+        const PU: Role = Role::pusher();
+        match *self {
+            PU => false,
             _ => true,
         }
     }
@@ -445,9 +462,9 @@ impl Role {
 impl From<ClientRole> for Role {
     fn from(value: ClientRole) -> Self {
         match value {
-            ClientRole::Pusher => Self::Pusher,
-            ClientRole::Observer => Self::Observer,
-            ClientRole::Director => Self::Director,
+            ClientRole::Pusher => Self::pusher(),
+            ClientRole::Observer => Self::observer(),
+            ClientRole::Director => Self::director(),
         }
     }
 }
