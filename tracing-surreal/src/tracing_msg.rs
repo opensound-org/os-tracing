@@ -12,7 +12,7 @@ pub mod layer;
 pub mod observe;
 pub mod proc_env;
 
-pub use handshake::{ClientRole, Handshake, MsgFormat};
+pub use handshake::{Handshake, MsgFormat};
 pub use layer::TracingLayerDefault;
 pub use observe::observer;
 pub use proc_env::ProcEnv;
@@ -415,6 +415,14 @@ impl From<MsgBody> for TracingMsg {
             body,
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum ClientRole {
+    Pusher,
+    Observer,
+    Director,
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
