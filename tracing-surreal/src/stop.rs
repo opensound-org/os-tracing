@@ -257,7 +257,7 @@ impl<C: Connection> Stop<C> {
 
         // last_id: 01JH8CBYAKFSRK8Y9HY02QVTDS
         // SELECT * FROM (SELECT *, client_id[*] FROM type::thing($table_name, ..=$last_id) ORDER BY id DESC LIMIT $n) ORDER BY id
-        let query = "SELECT * FROM (SELECT * FROM type::thing($table_name, ..) ORDER BY id DESC LIMIT $n) ORDER BY id";
+        let query = "SELECT * FROM type::thing($table_name, ..) ORDER BY id DESC LIMIT $n";
         let msgs: Vec<Msg> = self
             .db
             .query(query)
@@ -267,7 +267,7 @@ impl<C: Connection> Stop<C> {
 
         // clients + disconnects & merge
 
-        Ok(msgs.iter().map(|m| m.message.clone()).collect())
+        Ok(msgs.iter().rev().map(|m| m.message.clone()).collect())
     }
 
     pub async fn print(&self) {
