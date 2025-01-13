@@ -241,7 +241,7 @@ impl<C: Connection> Stop<C> {
         })
     }
 
-    pub async fn query_last_n(&self, n: u8) -> Result<Vec<String>, surrealdb::Error> {
+    pub async fn query_last_n(&self, n: u8) -> Result<Vec<(String, String)>, surrealdb::Error> {
         #[derive(Serialize)]
         struct Bind {
             table_name: String,
@@ -251,13 +251,20 @@ impl<C: Connection> Stop<C> {
         let table_name = format!("{}-msg", self.formatted_timestamp);
 
         #[derive(Deserialize)]
+        struct ClientInfo {
+            c_client_name: String,
+        }
+
+        #[derive(Deserialize)]
         struct Msg {
             message: String,
+            client_id: ClientInfo,
         }
 
         // last_id: 01JH8CBYAKFSRK8Y9HY02QVTDS
         // SELECT * FROM (SELECT *, client_id[*] FROM type::thing($table_name, ..=$last_id) ORDER BY id DESC LIMIT $n) ORDER BY id
-        let query = "SELECT * FROM type::thing($table_name, ..) ORDER BY id DESC LIMIT $n";
+        let query =
+            "SELECT *, client_id[*] FROM type::thing($table_name, ..) ORDER BY id DESC LIMIT $n";
         let msgs: Vec<Msg> = self
             .db
             .query(query)
@@ -267,7 +274,11 @@ impl<C: Connection> Stop<C> {
 
         // clients + disconnects & merge
 
-        Ok(msgs.iter().rev().map(|m| m.message.clone()).collect())
+        Ok(msgs
+            .iter()
+            .rev()
+            .map(|m| (m.message.clone(), m.client_id.c_client_name.clone()))
+            .collect())
     }
 
     pub async fn print(&self) {
