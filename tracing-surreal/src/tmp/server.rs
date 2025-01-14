@@ -1,6 +1,6 @@
 use crate::{
     stop::Stop,
-    tracing_msg::{ClientRole, GraceType},
+    tracing_msg::{query_map::QueryMap, ClientRole, GraceType, MsgFormat, ObserverOptions},
 };
 use est::task::CloseAndWait;
 use indexmap::IndexMap;
@@ -39,18 +39,37 @@ struct AuthArgs {
     director_token: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct FormatArgs {
+    accept_json: bool,
+    accept_bincode: bool,
+    accept_msgpack: bool,
+}
+
+impl FormatArgs {
+    fn no_msg_format(&self) -> bool {
+        !self.accept_json && !self.accept_bincode && !self.accept_msgpack
+    }
+
+    fn allowed(&self, msg_format: MsgFormat) -> bool {
+        match msg_format {
+            MsgFormat::Json => self.accept_json,
+            MsgFormat::Bincode => self.accept_bincode,
+            MsgFormat::Msgpack => self.accept_msgpack,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ServerBuilder<C: Connection> {
     stop: Stop<C>,
     auth_args: AuthArgs,
-    accept_json: bool,
-    accept_bincode: bool,
-    accept_msgpack: bool,
+    format_args: FormatArgs,
     fuck_off_on_damage: bool,
     fuck_off_on_observer_push: bool,
     ctrlc_shutdown: bool,
     ws_handshake_timeout: Duration,
-    tmp_handshake_timeout: Duration,
+    tmp_hello_timeout: Duration,
     bind_addrs: Vec<SocketAddr>,
 }
 
@@ -138,21 +157,30 @@ impl<C: Connection + Clone> ServerBuilder<C> {
 
     pub fn disable_json(self) -> Self {
         Self {
-            accept_json: false,
+            format_args: FormatArgs {
+                accept_json: false,
+                ..self.format_args
+            },
             ..self
         }
     }
 
     pub fn disable_bincode(self) -> Self {
         Self {
-            accept_bincode: false,
+            format_args: FormatArgs {
+                accept_bincode: false,
+                ..self.format_args
+            },
             ..self
         }
     }
 
     pub fn disable_msgpack(self) -> Self {
         Self {
-            accept_msgpack: false,
+            format_args: FormatArgs {
+                accept_msgpack: false,
+                ..self.format_args
+            },
             ..self
         }
     }
@@ -185,9 +213,9 @@ impl<C: Connection + Clone> ServerBuilder<C> {
         }
     }
 
-    pub fn tmp_handshake_timeout(self, timeout: Duration) -> Self {
+    pub fn tmp_hello_timeout(self, timeout: Duration) -> Self {
         Self {
-            tmp_handshake_timeout: timeout,
+            tmp_hello_timeout: timeout,
             ..self
         }
     }
@@ -200,7 +228,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
     }
 
     pub async fn start(self) -> Result<ServerHandle, StartError> {
-        if !self.accept_json && !self.accept_bincode && !self.accept_msgpack {
+        if self.format_args.no_msg_format() {
             return Err(StartError::NoMsgFormat);
         }
 
@@ -213,13 +241,13 @@ impl<C: Connection + Clone> ServerBuilder<C> {
             builder.stop.print().await;
             println!("{}", builder.fuck_off_on_damage);
             println!("{}", builder.fuck_off_on_observer_push);
-            println!("{:?}", builder.tmp_handshake_timeout);
+            println!("{:?}", builder.tmp_hello_timeout);
             // log safe builder info + local_addr into db
 
             let tracker = TaskTracker::new();
 
             loop {
-                let (stream, client) = tokio::select! {
+                let (stream, client_addr) = tokio::select! {
                     res = ctrl_c(), if builder.ctrlc_shutdown => {
                         println!("Bye from ctrl_c");
                         shutdown_waiter.cancel();
@@ -241,15 +269,23 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                 };
 
                 println!("{:?}", stream);
-                println!("{}", client);
+                println!("{}", client_addr);
 
                 let builder = builder.clone();
                 let auth_args = builder.auth_args.clone();
+                let format_args = builder.format_args;
                 let shutdown_waiter = shutdown_waiter.clone();
                 let (role_send, role_recv) = oneshot::channel();
                 let (map_send, map_recv) = oneshot::channel();
+                let (fmt_send, fmt_recv) = oneshot::channel();
+                let (ob_send, ob_recv) = oneshot::channel();
                 tracker.spawn(async move {
-                    let (stream, role, query_map) = tokio::select! {
+                    let (stream,
+                        client_role,
+                        msg_format,
+                        observer_options,
+                        query_map
+                    ) = tokio::select! {
                         _ = shutdown_waiter.cancelled() => {
                             println!("shutdown_waiter.cancelled()");
                             return;
@@ -263,14 +299,29 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                             println!("path: {}", path);
                             println!("query: {:?}", query);
 
-                            if let Some(Ok(map)) = &query {
-                                map_send.send(map.clone()).ok();
-                            }
+                            let msg_format = match &query {
+                                Some(Ok(map)) => {
+                                    map_send.send(map.clone()).ok();
+                                    map.get_msg_format()
+                                }
+                                _ => Default::default(),
+                            };
+
+                            match format_args.allowed(msg_format) {
+                                true => fmt_send.send(msg_format).ok(),
+                                false => {
+                                    return Err(err_resp(
+                                        &format!("{:?} not allowed!", msg_format),
+                                        StatusCode::FORBIDDEN
+                                    ));
+                                },
+                            };
 
                             if path == auth_args.pusher_path {
-                                return token_auth(
+                                return query_auth(
                                     query,
                                     auth_args.pusher_token,
+                                    ob_send,
                                     role_send,
                                     ClientRole::Pusher,
                                     resp,
@@ -278,9 +329,10 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                             }
 
                             if path == auth_args.observer_path {
-                                return token_auth(
+                                return query_auth(
                                     query,
                                     auth_args.observer_token,
+                                    ob_send,
                                     role_send,
                                     ClientRole::Observer,
                                     resp,
@@ -288,9 +340,10 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                             }
 
                             if path == auth_args.director_path {
-                                return token_auth(
+                                return query_auth(
                                     query,
                                     auth_args.director_token,
+                                    ob_send,
                                     role_send,
                                     ClientRole::Director,
                                     resp,
@@ -309,14 +362,25 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                 return;
                             }
                             Ok(Ok(stream)) => {
-                                (stream, role_recv.await.unwrap(), map_recv.await.ok())
+                                (
+                                    stream,
+                                    role_recv.await.unwrap(),
+                                    fmt_recv.await.unwrap(),
+                                    ob_recv.await.ok(),
+                                    map_recv.await.ok()
+                                )
                             }
                         }
                     };
 
                     println!("inner_stream: {:?}", stream);
-                    println!("client_role: {:?}", role);
+                    println!("client_role: {:?}", client_role);
+                    println!("client_addr: {}", client_addr);
+                    println!("msg_format: {:?}", msg_format);
+                    println!("observer_options: {:?}", observer_options);
                     println!("query_map: {:?}", query_map);
+
+                    // todo: HelloMsg + Stop::client_hello
                 });
             }
         });
@@ -345,26 +409,37 @@ impl<C: Connection + Clone> BuildServerDefault<C> for Stop<C> {
                 director_path: "/director".into(),
                 director_token: None,
             },
-            accept_json: true,
-            accept_bincode: true,
-            accept_msgpack: true,
+            format_args: FormatArgs {
+                accept_json: true,
+                accept_bincode: true,
+                accept_msgpack: true,
+            },
             fuck_off_on_damage: false,
             fuck_off_on_observer_push: false,
             ctrlc_shutdown: true,
             ws_handshake_timeout: Duration::from_secs_f64(1.5),
-            tmp_handshake_timeout: Duration::from_secs_f64(3.0),
+            tmp_hello_timeout: Duration::from_secs_f64(3.0),
             bind_addrs: vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8192).into()],
         }
     }
 }
 
-fn token_auth(
+fn query_auth(
     query: Option<Result<IndexMap<String, String>, serde_qs::Error>>,
     token_need: Option<String>,
+    ob_send: oneshot::Sender<ObserverOptions>,
     role_send: oneshot::Sender<ClientRole>,
     role: ClientRole,
     resp: Response,
 ) -> Result<Response, ErrorResponse> {
+    if role.can_observe() {
+        let ob = match &query {
+            Some(Ok(map)) => map.get_observer_options(),
+            _ => Default::default(),
+        };
+        ob_send.send(ob).ok();
+    }
+
     if let Some(token_need) = token_need {
         match query {
             None => {
@@ -380,7 +455,7 @@ fn token_auth(
             Some(Ok(map)) => {
                 println!("{:?}", map);
 
-                match map.get("token") {
+                match map.get_token() {
                     None => {
                         return Err(err_resp("need token!", StatusCode::BAD_REQUEST));
                     }

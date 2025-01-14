@@ -26,6 +26,7 @@ async fn main() -> AnyRes {
     let mut server = stop
         .build_server_default()
         .pusher_token("fucker")
+        .disable_json()
         .start()
         .await?;
     println!("{}", server.get_local_addr());

@@ -1,5 +1,6 @@
-use super::{CloseMsg, Handshake, Role, TracingMsg};
+use super::{CloseMsg, HelloMsg, Role, TracingMsg};
 use chrono::{DateTime, Local};
+use either::Either;
 use serde::{Deserialize, Serialize};
 use std::{mem, net::SocketAddr};
 use tokio::sync::broadcast::Receiver;
@@ -23,8 +24,8 @@ impl From<ClientId> for surrealdb::RecordId {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct ClientInfo {
-    pub handshake_timestamp: DateTime<Local>,
-    pub handshake_info: Handshake,
+    pub hello_timestamp: DateTime<Local>,
+    pub hello_msg: HelloMsg,
     pub client_role: Role,
     pub client_addr: Option<SocketAddr>,
 }
@@ -32,20 +33,20 @@ pub struct ClientInfo {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct CloseInfo {
     pub close_timestamp: DateTime<Local>,
-    pub client_info: ClientInfo,
+    pub client_info: Either<ClientId, ClientInfo>,
     pub close_msg: CloseMsg,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MsgInfo {
-    pub client_info: ClientInfo,
+    pub client_info: Either<ClientId, ClientInfo>,
     pub tracing_msg: TracingMsg,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ObserveMsg {
-    OnClientHandshake(ClientInfo),
+    OnClientHello(ClientId, ClientInfo),
     OnDisconnect(CloseInfo),
     OnMsg(MsgInfo),
 }

@@ -1,6 +1,7 @@
 use crate::tracing_msg::{
-    ClientRole, CloseErr, CloseErrKind, CloseMsg, CloseOk, CloseTransport, Handshake, MsgFormat,
-    ProcEnv, PushMsg, Role, TracingMsg,
+    query_map::{LinkClient, QueryHistory},
+    ClientRole, CloseErr, CloseErrKind, CloseMsg, CloseOk, CloseTransport, HelloMsg, MsgFormat,
+    ObserverOptions, ProcEnv, PushMsg, Role, TracingMsg,
 };
 use chrono::{DateTime, Local};
 use indexmap::IndexMap;
@@ -58,6 +59,7 @@ pub struct Stop<C: Connection> {
     client_id: RecordId,
     can_push: bool,
     can_observe: bool,
+    observer_options: Option<ObserverOptions>,
 }
 
 #[derive(Deserialize)]
@@ -124,11 +126,12 @@ impl<C: Connection> StopBuilder<C> {
         let client_name = self.host;
         let client_role = Role::host();
         let msg_format = None;
+        let observer_options = None;
         let client_addr = None;
         let query_map = None;
         let proc_env = ProcEnv::create_async().await;
 
-        Ok(Stop::handshake_internal(
+        Ok(Stop::hello_internal(
             &db,
             &id_gen,
             &session_id,
@@ -136,6 +139,7 @@ impl<C: Connection> StopBuilder<C> {
             &client_name,
             client_role,
             msg_format,
+            observer_options,
             client_addr,
             &query_map,
             &proc_env,
@@ -153,29 +157,32 @@ impl<C: Connection> Stop<C> {
         }
     }
 
-    pub async fn client_handshake(
+    pub async fn client_hello(
         &self,
-        client_info: Handshake,
         client_role: ClientRole,
+        client_hello: HelloMsg,
         client_addr: SocketAddr,
+        msg_format: MsgFormat,
+        observer_options: Option<ObserverOptions>,
         query_map: Option<IndexMap<String, String>>,
     ) -> surrealdb::Result<Self> {
-        Self::handshake_internal(
+        Self::hello_internal(
             &self.db,
             &self.id_gen,
             &self.session_id,
             &self.formatted_timestamp,
-            &client_info.client_name,
+            &client_hello.client_name,
             client_role.into(),
-            Some(client_info.msg_format),
+            Some(msg_format),
+            observer_options,
             Some(client_addr),
             &query_map,
-            &client_info.proc_env,
+            &client_hello.proc_env,
         )
         .await
     }
 
-    async fn handshake_internal(
+    async fn hello_internal(
         db: &Surreal<C>,
         id_gen: &IdGen,
         session_id: &RecordId,
@@ -183,6 +190,7 @@ impl<C: Connection> Stop<C> {
         client_name: &str,
         client_role: Role,
         msg_format: Option<MsgFormat>,
+        observer_options: Option<ObserverOptions>,
         client_addr: Option<SocketAddr>,
         query_map: &Option<IndexMap<String, String>>,
         proc_env: &Option<ProcEnv>,
@@ -194,9 +202,11 @@ impl<C: Connection> Stop<C> {
             c_client_name: String,
             d_client_role: Role,
             e_msg_format: Option<MsgFormat>,
-            f_client_addr: Option<SocketAddr>,
-            g_query_map: Option<IndexMap<String, String>>,
-            h_proc_env: Option<Value>,
+            f_query_history: Option<QueryHistory>,
+            g_link_client: Option<LinkClient>,
+            h_client_addr: Option<SocketAddr>,
+            i_query_map: Option<IndexMap<String, String>>,
+            j_proc_env: Option<Value>,
         }
 
         let a_timestamp = Local::now();
@@ -204,18 +214,22 @@ impl<C: Connection> Stop<C> {
         let c_client_name = client_name.into();
         let d_client_role = client_role;
         let e_msg_format = msg_format;
-        let f_client_addr = client_addr;
-        let g_query_map = query_map.clone();
-        let h_proc_env = proc_env.as_ref().and_then(|v| serde_json::to_value(v).ok());
+        let f_query_history = observer_options.map(|o| o.query_history);
+        let g_link_client = observer_options.map(|o| o.link_client);
+        let h_client_addr = client_addr;
+        let i_query_map = query_map.clone();
+        let j_proc_env = proc_env.as_ref().and_then(|v| serde_json::to_value(v).ok());
         let record = ClientRecord {
             a_timestamp,
             b_session_id,
             c_client_name,
             d_client_role,
             e_msg_format,
-            f_client_addr,
-            g_query_map,
-            h_proc_env,
+            f_query_history,
+            g_link_client,
+            h_client_addr,
+            i_query_map,
+            j_proc_env,
         };
         let rid: Option<RID> = db
             .create((
@@ -240,6 +254,7 @@ impl<C: Connection> Stop<C> {
             client_id,
             can_push,
             can_observe,
+            observer_options,
         })
     }
 
@@ -273,6 +288,7 @@ impl<C: Connection> Stop<C> {
 
     pub async fn print(&self) {
         println!("{}", self.can_observe);
+        println!("{:?}", self.observer_options);
     }
 }
 

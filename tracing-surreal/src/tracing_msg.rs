@@ -7,15 +7,15 @@ use std::{error, fmt, future::Future, num::NonZeroU64, ops::Deref, thread};
 use tokio::task;
 use tracing_core::{field, span};
 
-pub(crate) mod handshake;
 pub mod layer;
 pub mod observe;
 pub mod proc_env;
+pub mod query_map;
 
-pub use handshake::{Handshake, MsgFormat};
 pub use layer::TracingLayerDefault;
 pub use observe::observer;
 pub use proc_env::ProcEnv;
+pub use query_map::{MsgFormat, ObserverOptions};
 
 #[derive(Debug, Display, Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(transparent)]
@@ -425,6 +425,16 @@ pub enum ClientRole {
     Director,
 }
 
+impl ClientRole {
+    pub fn can_push(&self) -> bool {
+        *self != Self::Observer
+    }
+
+    pub fn can_observe(&self) -> bool {
+        *self != Self::Pusher
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -451,19 +461,11 @@ impl Role {
     }
 
     pub fn can_push(&self) -> bool {
-        const OB: Role = Role::observer();
-        match *self {
-            OB => false,
-            _ => true,
-        }
+        *self != Self::observer()
     }
 
     pub fn can_observe(&self) -> bool {
-        const PU: Role = Role::pusher();
-        match *self {
-            PU => false,
-            _ => true,
-        }
+        *self != Self::pusher()
     }
 }
 
@@ -475,6 +477,12 @@ impl From<ClientRole> for Role {
             ClientRole::Director => Self::director(),
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+pub struct HelloMsg {
+    pub client_name: String,
+    pub proc_env: Option<ProcEnv>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]

@@ -5,7 +5,9 @@ use tokio_tungstenite::{connect_async, tungstenite::error};
 
 #[tokio::main]
 async fn main() -> AnyRes {
-    let res = connect_async("ws://127.0.0.1:8192/pusher?111=222&token=fucker&333=444").await;
+    let res =
+        connect_async("ws://127.0.0.1:8192/pusher?111=222&token=fucker&333=444&format=bincode")
+            .await;
     if let Err(error::Error::Http(resp)) = &res {
         println!(
             "{}",
