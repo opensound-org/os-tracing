@@ -117,6 +117,8 @@ impl<C: Connection> StopBuilder<C> {
             .create((".sessions", id_gen.next(a_timestamp).await))
             .content(record)
             .await?;
+        db.query(include_str!("fns.surql")).await?.check()?;
+
         let session_id = rid.unwrap().id;
         let formatted_timestamp = a_timestamp.format("%y%m%d-%H%M%S").to_string();
         let client_name = self.host;
@@ -242,14 +244,6 @@ impl<C: Connection> Stop<C> {
     }
 
     pub async fn query_last_n(&self, n: u8) -> Result<Vec<(String, String)>, surrealdb::Error> {
-        #[derive(Serialize)]
-        struct Bind {
-            table_name: String,
-            n: u8,
-        }
-
-        let table_name = format!("{}-msg", self.formatted_timestamp);
-
         #[derive(Deserialize)]
         struct ClientInfo {
             c_client_name: String,
@@ -261,16 +255,12 @@ impl<C: Connection> Stop<C> {
             client_id: ClientInfo,
         }
 
-        // last_id: 01JH8CBYAKFSRK8Y9HY02QVTDS
-        // SELECT * FROM (SELECT *, client_id[*] FROM type::thing($table_name, ..=$last_id) ORDER BY id DESC LIMIT $n) ORDER BY id
-        let query =
-            "SELECT *, client_id[*] FROM type::thing($table_name, ..) ORDER BY id DESC LIMIT $n";
+        let table_name = format!("{}-msg", self.formatted_timestamp);
         let msgs: Vec<Msg> = self
             .db
-            .query(query)
-            .bind(Bind { table_name, n })
-            .await?
-            .take(0)?;
+            .run("fn::last_n_desc_client")
+            .args((table_name, n))
+            .await?;
 
         // clients + disconnects & merge
 
