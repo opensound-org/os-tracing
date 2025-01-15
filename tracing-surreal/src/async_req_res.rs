@@ -59,7 +59,7 @@ impl<T> From<SendError<T>> for RequestError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Requester<Q, S>(UnboundedSender<Request<Q, S>>);
 
 impl<Q, S> Requester<Q, S> {
@@ -67,6 +67,12 @@ impl<Q, S> Requester<Q, S> {
         let (res_send, res_recv) = oneshot::channel();
         self.0.send(Request { req, res_send })?;
         res_recv.await.map_err(|_| RequestError::RecvResErr)
+    }
+}
+
+impl<Q, S> Clone for Requester<Q, S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }
 

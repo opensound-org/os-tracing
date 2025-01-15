@@ -47,17 +47,33 @@ pub struct MsgInfo {
 #[serde(rename_all = "snake_case")]
 pub enum ObserveMsg {
     OnClientHello(ClientId, ClientInfo),
-    OnDisconnect(CloseInfo),
-    OnMsg(MsgInfo),
+    OnDisconnect(String, CloseInfo),
+    OnMsg(String, MsgInfo),
+}
+
+impl ObserveMsg {
+    pub fn get_msg_key(&self) -> String {
+        match self {
+            Self::OnClientHello(id, _) => &id.1,
+            Self::OnDisconnect(key, _) => key,
+            Self::OnMsg(key, _) => key,
+        }
+        .clone()
+    }
 }
 
 #[derive(Debug)]
 pub struct Observer {
     history: Vec<ObserveMsg>,
     live: Receiver<ObserveMsg>,
+    link: bool,
 }
 
 impl Observer {
+    pub fn link_client(&self) -> bool {
+        self.link
+    }
+
     pub fn history(&mut self) -> Vec<ObserveMsg> {
         mem::take(&mut self.history)
     }
@@ -67,6 +83,10 @@ impl Observer {
     }
 }
 
-pub fn observer(history: Vec<ObserveMsg>, live: Receiver<ObserveMsg>) -> Observer {
-    Observer { history, live }
+pub fn observer(history: Vec<ObserveMsg>, live: Receiver<ObserveMsg>, link: bool) -> Observer {
+    Observer {
+        history,
+        live,
+        link,
+    }
 }

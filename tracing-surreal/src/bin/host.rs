@@ -22,8 +22,8 @@ async fn db() -> AnyRes<Surreal<Client>> {
 
 #[tokio::main]
 async fn main() -> AnyRes {
-    let stop = Stop::builder_default(db().await?, "test").init().await?;
-    let mut server = stop
+    let (stop, mut obs) = Stop::builder_default(db().await?, "test").init().await?;
+    let server = stop
         .build_server_default()
         .pusher_token("fucker")
         .disable_json()
@@ -31,10 +31,11 @@ async fn main() -> AnyRes {
         .await?;
     println!("{}", server.get_local_addr());
 
-    let grace_type = match timeout(Duration::from_secs_f64(30.0), &mut server).await {
+    let grace_type = match timeout(Duration::from_secs_f64(30.0), &mut obs).await {
         Err(_) => {
             println!("5s elapsed, initiating shutdown...");
-            server.graceful_shutdown().await??
+            server.graceful_shutdown().await??;
+            obs.graceful_shutdown().await??
         }
         Ok(res) => {
             println!("routine exited");

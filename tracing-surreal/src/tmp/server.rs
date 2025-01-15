@@ -1,6 +1,6 @@
 use crate::{
     stop::Stop,
-    tracing_msg::{query_map::QueryMap, ClientRole, GraceType, MsgFormat, ObserverOptions},
+    tracing_msg::{query_map::QueryMap, ClientRole, GraceType, MsgFormat, QueryHistory},
 };
 use est::task::CloseAndWait;
 use indexmap::IndexMap;
@@ -278,12 +278,12 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                 let (role_send, role_recv) = oneshot::channel();
                 let (map_send, map_recv) = oneshot::channel();
                 let (fmt_send, fmt_recv) = oneshot::channel();
-                let (ob_send, ob_recv) = oneshot::channel();
+                let (qh_send, qh_recv) = oneshot::channel();
                 tracker.spawn(async move {
                     let (stream,
                         client_role,
                         msg_format,
-                        observer_options,
+                        query_history,
                         query_map
                     ) = tokio::select! {
                         _ = shutdown_waiter.cancelled() => {
@@ -321,7 +321,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                 return query_auth(
                                     query,
                                     auth_args.pusher_token,
-                                    ob_send,
+                                    qh_send,
                                     role_send,
                                     ClientRole::Pusher,
                                     resp,
@@ -332,7 +332,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                 return query_auth(
                                     query,
                                     auth_args.observer_token,
-                                    ob_send,
+                                    qh_send,
                                     role_send,
                                     ClientRole::Observer,
                                     resp,
@@ -343,7 +343,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                 return query_auth(
                                     query,
                                     auth_args.director_token,
-                                    ob_send,
+                                    qh_send,
                                     role_send,
                                     ClientRole::Director,
                                     resp,
@@ -366,7 +366,7 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                                     stream,
                                     role_recv.await.unwrap(),
                                     fmt_recv.await.unwrap(),
-                                    ob_recv.await.ok(),
+                                    qh_recv.await.ok(),
                                     map_recv.await.ok()
                                 )
                             }
@@ -377,10 +377,10 @@ impl<C: Connection + Clone> ServerBuilder<C> {
                     println!("client_role: {:?}", client_role);
                     println!("client_addr: {}", client_addr);
                     println!("msg_format: {:?}", msg_format);
-                    println!("observer_options: {:?}", observer_options);
+                    println!("query_history: {:?}", query_history);
                     println!("query_map: {:?}", query_map);
 
-                    // todo: HelloMsg + Stop::client_hello
+                    // todo: HelloMsg + Stop::client_hello + 传回Observer::link_client
                 });
             }
         });
@@ -427,17 +427,17 @@ impl<C: Connection + Clone> BuildServerDefault<C> for Stop<C> {
 fn query_auth(
     query: Option<Result<IndexMap<String, String>, serde_qs::Error>>,
     token_need: Option<String>,
-    ob_send: oneshot::Sender<ObserverOptions>,
+    qh_send: oneshot::Sender<QueryHistory>,
     role_send: oneshot::Sender<ClientRole>,
     role: ClientRole,
     resp: Response,
 ) -> Result<Response, ErrorResponse> {
     if role.can_observe() {
-        let ob = match &query {
-            Some(Ok(map)) => map.get_observer_options(),
+        let qh = match &query {
+            Some(Ok(map)) => map.get_query_history(),
             _ => Default::default(),
         };
-        ob_send.send(ob).ok();
+        qh_send.send(qh).ok();
     }
 
     if let Some(token_need) = token_need {

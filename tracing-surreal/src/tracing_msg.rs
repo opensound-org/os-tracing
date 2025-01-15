@@ -13,9 +13,9 @@ pub mod proc_env;
 pub mod query_map;
 
 pub use layer::TracingLayerDefault;
-pub use observe::observer;
+pub use observe::{observer, ClientInfo, ObserveMsg, Observer};
 pub use proc_env::ProcEnv;
-pub use query_map::{MsgFormat, ObserverOptions};
+pub use query_map::{MsgFormat, QueryHistory};
 
 #[derive(Debug, Display, Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(transparent)]
@@ -466,6 +466,10 @@ impl Role {
 
     pub fn can_observe(&self) -> bool {
         *self != Self::pusher()
+    }
+
+    pub fn is_client(&self) -> bool {
+        *self != Self::host()
     }
 }
 
