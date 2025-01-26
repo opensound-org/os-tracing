@@ -50,9 +50,9 @@ at your option.
 
 [Github](https://github.com/opensound-org/tracing-surreal) is our [single source of truth](https://en.wikipedia.org/wiki/Single_source_of_truth), where we welcome all issues and pull requests.
 
-We also have two downstream read-only mirrors that are [automatically pushed](.github/workflows/mirror.yml):
-- [GitLab](https://gitlab.com/opensound-org/tracing-surreal)
-- [Gitee](https://gitee.com/opensound-org/tracing-surreal)
+We also have two downstream read-only mirrors that are [automatically pushed](../.github/workflows/mirror.yml):
+- [Gitea](https://gitea.29bot.com/opensound-org/os-tracing/src/branch/main/tracing-surreal)
+- [Gitee](https://gitee.com/opensound-org/os-tracing/tree/main/tracing-surreal)
 
 As they are read-only mirrors, please do not initiate any merge or pull requests on these two platforms.
 
