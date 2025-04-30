@@ -3,7 +3,6 @@ use super::{
 };
 use std::{
     fmt::Debug,
-    future::Future,
     io,
     pin::Pin,
     task::{self, Poll},
@@ -11,15 +10,15 @@ use std::{
 use thiserror::Error;
 use tokio::{
     signal::ctrl_c,
-    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
     task::{JoinError, JoinHandle},
 };
 use tokio_util::sync::CancellationToken;
 use tracing_core::{
-    span::{self, Attributes, Record},
     Event, Subscriber,
+    span::{self, Attributes, Record},
 };
-use tracing_subscriber::{filter::Filtered, layer::Context, Layer};
+use tracing_subscriber::{Layer, filter::Filtered, layer::Context};
 
 pub use tracing_subscriber::filter::LevelFilter;
 

@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, IfIsHumanReadable};
+use serde_with::{DisplayFromStr, IfIsHumanReadable, serde_as};
 use std::{fmt, net::IpAddr, process, str::FromStr};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, Networks, RefreshKind, System};
 use tokio::task::spawn_blocking;
@@ -40,7 +40,7 @@ impl FromStr for MacIntenal {
 
 impl MacAddr {
     pub fn bytes(&self) -> [u8; 6] {
-        self.0 .0
+        self.0.0
     }
 }
 

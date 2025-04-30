@@ -1,9 +1,9 @@
 use est::AnyRes;
 use std::time::Duration;
 use surrealdb::{
+    Surreal,
     engine::remote::ws::{Client, Ws},
     opt::auth::Root,
-    Surreal,
 };
 use tokio::time::timeout;
 use tracing_surreal::{stop::Stop, tmp::server::BuildServerDefault};

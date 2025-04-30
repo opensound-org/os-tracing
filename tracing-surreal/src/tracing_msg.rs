@@ -1,9 +1,9 @@
 use chrono::{DateTime, Local};
 use derive_more::Display;
 use est::{task::TaskId, thread::ThreadId};
-use indexmap::{map::Entry, IndexMap};
+use indexmap::{IndexMap, map::Entry};
 use serde::{Deserialize, Serialize};
-use std::{error, fmt, future::Future, num::NonZeroU64, ops::Deref, thread};
+use std::{error, fmt, num::NonZeroU64, ops::Deref, thread};
 use tokio::task;
 use tracing_core::{field, span};
 
@@ -13,7 +13,7 @@ pub mod proc_env;
 pub mod query_map;
 
 pub use layer::TracingLayerDefault;
-pub use observe::{observer, ClientInfo, ObserveMsg, Observer};
+pub use observe::{ClientInfo, ObserveMsg, Observer, observer};
 pub use proc_env::ProcEnv;
 pub use query_map::{MsgFormat, QueryHistory};
 

@@ -1,37 +1,35 @@
 //#![allow(warnings)]
 
 use crate::{
-    async_req_res::{req_res, Requester},
+    async_req_res::{Requester, req_res},
     tracing_msg::{
-        observe::{CloseInfo, MsgInfo},
         ClientInfo, ClientRole, CloseErr, CloseErrKind, CloseMsg, CloseOk, CloseTransport,
         GraceType, HelloMsg, MsgFormat, ObserveMsg, Observer, ProcEnv, PushMsg, QueryHistory, Role,
         TracingMsg,
+        observe::{CloseInfo, MsgInfo},
     },
 };
 use chrono::{DateTime, Local};
 use either::Either;
 use futures::StreamExt;
 use indexmap::IndexMap;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::{
-    fmt,
-    future::Future,
-    io,
+    fmt, io,
     net::SocketAddr,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 use surrealdb::{
+    Connection, RecordId, RecordIdKey, Surreal,
     method::{QueryStream, Stream},
     value::{Action, Notification},
-    Connection, RecordId, RecordIdKey, Surreal,
 };
 use thiserror::Error;
 use tokio::{
-    sync::{broadcast, oneshot, RwLock},
+    sync::{RwLock, broadcast, oneshot},
     task::{JoinError, JoinHandle},
 };
 use tokio_util::sync::CancellationToken;
@@ -68,14 +66,14 @@ struct IdGen(Arc<RwLock<Generator>>);
 impl IdGen {
     async fn next(&self, timestamp: DateTime<Local>) -> String {
         let datetime = timestamp.into();
-        let mut gen = self.0.write().await;
+        let mut id_gen = self.0.write().await;
 
         loop {
-            if let Ok(ulid) = gen.generate_from_datetime(datetime) {
+            if let Ok(ulid) = id_gen.generate_from_datetime(datetime) {
                 return ulid.to_string();
             }
 
-            *gen = Default::default();
+            *id_gen = Default::default();
         }
     }
 }

@@ -1,9 +1,9 @@
 use est::AnyRes;
 use std::time::Duration;
 use surrealdb::{
+    Surreal,
     engine::remote::ws::{Client, Ws},
     opt::auth::Root,
-    Surreal,
 };
 use tokio::time::interval;
 use tokio_util::sync::CancellationToken;

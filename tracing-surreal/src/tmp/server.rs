@@ -1,11 +1,10 @@
 use crate::{
     stop::Stop,
-    tracing_msg::{query_map::QueryMap, ClientRole, GraceType, MsgFormat, QueryHistory},
+    tracing_msg::{ClientRole, GraceType, MsgFormat, QueryHistory, query_map::QueryMap},
 };
 use est::task::CloseAndWait;
 use indexmap::IndexMap;
 use std::{
-    future::Future,
     io,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     pin::Pin,
@@ -15,7 +14,7 @@ use std::{
 use surrealdb::Connection;
 use thiserror::Error;
 use tokio::{
-    net::{lookup_host, TcpListener, ToSocketAddrs},
+    net::{TcpListener, ToSocketAddrs, lookup_host},
     signal::ctrl_c,
     sync::oneshot,
     task::{JoinError, JoinHandle},

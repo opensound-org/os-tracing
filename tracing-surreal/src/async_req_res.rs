@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 use thiserror::Error;
 use tokio::sync::{
-    mpsc::{error::SendError, unbounded_channel, UnboundedReceiver, UnboundedSender},
+    mpsc::{UnboundedReceiver, UnboundedSender, error::SendError, unbounded_channel},
     oneshot,
 };
 
