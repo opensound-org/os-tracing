@@ -2,7 +2,7 @@ use crate::{
     stop::Stop,
     tracing_msg::{ClientRole, GraceType, MsgFormat, QueryHistory, query_map::QueryMap},
 };
-use est::task::CloseAndWait;
+use est::task::task_tracker::CloseAndWait;
 use indexmap::IndexMap;
 use std::{
     io,
